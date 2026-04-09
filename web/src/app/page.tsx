@@ -129,7 +129,7 @@ function Hero() {
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
           </span>
-          Open Source &middot; MIT Licensed
+          Built for Enterprise AI Teams
         </div>
 
         <h1 className="mb-6 text-5xl font-extrabold leading-tight tracking-tight sm:text-6xl lg:text-7xl">
