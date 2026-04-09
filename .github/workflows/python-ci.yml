@@ -1,0 +1,44 @@
+name: Python CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "agentguard/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - ".github/workflows/python-ci.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "agentguard/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - ".github/workflows/python-ci.yml"
+
+jobs:
+  lint-and-test:
+    name: Lint & Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]" black
+
+      - name: Check formatting with black
+        run: black --check agentguard/ tests/
+
+      - name: Lint with ruff
+        run: ruff check agentguard/ tests/
+
+      - name: Run tests with coverage
+        run: pytest tests/ --cov=agentguard --cov-report=term-missing --cov-fail-under=80 -m "not slow"
