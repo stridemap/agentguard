@@ -1,0 +1,69 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentguard"
+version = "0.1.0"
+description = "Guardrails and policy enforcement for AI agents — the open-source governance layer for LLM-powered agents."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "Stridemap", email = "hello@stridemap.ai" },
+]
+keywords = [
+    "ai-agents",
+    "guardrails",
+    "policy-engine",
+    "dlp",
+    "prompt-injection",
+    "langchain",
+    "langgraph",
+    "security",
+    "governance",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Topic :: Security",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Typing :: Typed",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.4",
+]
+
+[project.urls]
+Homepage = "https://stridemap.ai"
+Repository = "https://github.com/stridemap/agentguard"
+Documentation = "https://github.com/stridemap/agentguard#readme"
+Issues = "https://github.com/stridemap/agentguard/issues"
+
+[tool.setuptools.packages.find]
+include = ["agentguard*"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: marks tests that require LLM calls or heavy I/O (deselect with '-m \"not slow\"')",
+]
+asyncio_mode = "auto"

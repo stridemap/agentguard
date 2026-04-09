@@ -1,0 +1,62 @@
+# ── Python ──────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+*.whl
+.venv/
+venv/
+env/
+.python-version
+
+# ── Node / Next.js ─────────────────────────────────
+node_modules/
+web/.next/
+web/out/
+.vercel
+.turbo
+
+# ── Environment & Secrets ──────────────────────────
+.env
+.env.local
+.env.*.local
+.env.production
+*.pem
+*.key
+
+# ── IDE ────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.code-workspace
+
+# ── OS ─────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ── Testing & Coverage ─────────────────────────────
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ── Streamlit ──────────────────────────────────────
+dashboard/.streamlit/secrets.toml
+
+# ── Database (local dev) ───────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ── Misc ───────────────────────────────────────────
+*.log
+*.bak
+*.tmp

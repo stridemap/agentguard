@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AgentGuard — AI Agent Governance Layer | Stridemap.AI</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body, #root { height: 100%; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: #030712; color: #f9fafb; overflow: hidden; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #0f172a; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #334155; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+  @keyframes fadeIn { from{opacity:0;transform:translateX(20px)} to{opacity:1;transform:translateX(0)} }
+  @keyframes slideUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+  .live-dot { animation: pulse 1.5s infinite; }
+  .fade-in { animation: fadeIn 0.25s ease-out; }
+  .slide-up { animation: slideUp 0.2s ease-out; }
+  tr.event-row:hover { background: rgba(20,184,166,0.06) !important; }
+  button:hover { opacity: 0.88; }
+  textarea { font-family: 'JetBrains Mono', monospace !important; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+// ── Mock Data ──────────────────────────────────────────────────────────────────
+const EVENTS = [
+  { id:"evt-001", ts:"14:32:01.421", agent:"finance-agent-1",  tool:"send_email",         action:"BLOCK", ms:12,  risk:["PII_DETECTED","EXTERNAL_DOMAIN"], policy:"DLP_001",   pii:["SSN","EMAIL_ADDRESS"], inject:"CLEAN",     chain:"a3f9e2b1" },
+  { id:"evt-002", ts:"14:32:03.887", agent:"hr-agent-2",       tool:"read_database",       action:"ALLOW", ms:4,   risk:[],                               policy:"SCOPE_002",  pii:[],                     inject:"CLEAN",     chain:"c7d1a4f8" },
+  { id:"evt-003", ts:"14:32:05.214", agent:"support-agent-1",  tool:"call_api",            action:"ALERT", ms:18,  risk:["EXTERNAL_DOMAIN"],              policy:"SCOPE_002",  pii:[],                     inject:"SUSPICIOUS",chain:"2e8b3c97" },
+  { id:"evt-004", ts:"14:32:07.003", agent:"finance-agent-2",  tool:"format_report",       action:"ALLOW", ms:6,   risk:[],                               policy:null,         pii:[],                     inject:"CLEAN",     chain:"9f4a1d65" },
+  { id:"evt-005", ts:"14:32:08.765", agent:"support-agent-2",  tool:"send_email",          action:"BLOCK", ms:31,  risk:["PII_DETECTED"],                 policy:"DLP_001",    pii:["CREDIT_CARD","PHONE_NUMBER"], inject:"INJECTED", chain:"5b2c8e31" },
+  { id:"evt-006", ts:"14:32:09.901", agent:"finance-agent-1",  tool:"read_database",       action:"ALLOW", ms:3,   risk:[],                               policy:"SCOPE_002",  pii:[],                     inject:"CLEAN",     chain:"d6a9f2c4" },
+  { id:"evt-007", ts:"14:32:11.123", agent:"hr-agent-1",       tool:"call_payment_api",    action:"BLOCK", ms:8,   risk:["EXTERNAL_DOMAIN","HIGH_FREQ"],  policy:"SCOPE_003",  pii:[],                     inject:"CLEAN",     chain:"3c7e1b82" },
+  { id:"evt-008", ts:"14:32:12.445", agent:"finance-agent-2",  tool:"read_database",       action:"ALLOW", ms:5,   risk:[],                               policy:"SCOPE_002",  pii:[],                     inject:"CLEAN",     chain:"f1d4a7b9" },
+  { id:"evt-009", ts:"14:32:14.002", agent:"support-agent-1",  tool:"read_ticket",         action:"ALERT", ms:47,  risk:["LARGE_PAYLOAD"],               policy:null,         pii:[],                     inject:"INJECTED",  chain:"8a2c5e40" },
+  { id:"evt-010", ts:"14:32:15.667", agent:"finance-agent-1",  tool:"send_internal_email", action:"ALLOW", ms:7,   risk:[],                               policy:"SCOPE_002",  pii:[],                     inject:"CLEAN",     chain:"b4f8d3c1" },
+];
+
+const VIOLATIONS_HOURLY = [
+  {h:"09",bl:3,al:1},{h:"10",bl:5,al:2},{h:"11",bl:2,al:4},{h:"12",bl:7,al:1},
+  {h:"13",bl:4,al:3},{h:"14",bl:9,al:5},{h:"15",bl:6,al:2},{h:"16",bl:11,al:4},
+];
+
+const PII_DATA = [
+  {type:"SSN",count:14,pct:32,color:"#ef4444"},
+  {type:"CREDIT_CARD",count:9,pct:21,color:"#f97316"},
+  {type:"EMAIL_ADDRESS",count:11,pct:25,color:"#eab308"},
+  {type:"PHONE_NUMBER",count:7,pct:16,color:"#8b5cf6"},
+  {type:"PHI",count:3,pct:7,color:"#ec4899"},
+];
+
+const TOP_POLICIES = [
+  {id:"DLP_001",name:"no-pii-external",hits:23,action:"BLOCK"},
+  {id:"SCOPE_002",name:"approved-tools-only",hits:18,action:"ALLOW"},
+  {id:"SCOPE_003",name:"payment-api-block",hits:11,action:"BLOCK"},
+  {id:"RATE_001",name:"rate-limit-10rpm",hits:7,action:"BLOCK"},
+];
+
+const AUDIT_ROWS = [
+  {id:"evt-001",ts:"2026-04-08T14:32:01Z",action:"BLOCK",tool:"send_email",agent:"finance-agent-1",chain:"a3f9e2b1d6..."},
+  {id:"evt-002",ts:"2026-04-08T14:32:03Z",action:"ALLOW",tool:"read_database",agent:"hr-agent-2",chain:"c7d1a4f880..."},
+  {id:"evt-003",ts:"2026-04-08T14:32:05Z",action:"ALERT",tool:"call_api",agent:"support-agent-1",chain:"2e8b3c97ff..."},
+  {id:"evt-004",ts:"2026-04-08T14:32:07Z",action:"ALLOW",tool:"format_report",agent:"finance-agent-2",chain:"9f4a1d65ab..."},
+  {id:"evt-005",ts:"2026-04-08T14:32:08Z",action:"BLOCK",tool:"send_email",agent:"support-agent-2",chain:"5b2c8e3112..."},
+  {id:"evt-006",ts:"2026-04-08T14:32:09Z",action:"ALLOW",tool:"read_database",agent:"finance-agent-1",chain:"d6a9f2c489..."},
+  {id:"evt-007",ts:"2026-04-08T14:32:11Z",action:"BLOCK",tool:"call_payment_api",agent:"hr-agent-1",chain:"3c7e1b82de..."},
+  {id:"evt-008",ts:"2026-04-08T14:32:12Z",action:"ALLOW",tool:"read_database",agent:"finance-agent-2",chain:"f1d4a7b9cc..."},
+];
+
+const YAML_POLICY = `version: "1.0"
+name: finance-production
+default_action: block
+
+rules:
+  - id: DLP_001
+    name: no-pii-external
+    match:
+      tool: "*"
+      direction: outbound
+      data_patterns:
+        - SSN
+        - CREDIT_CARD
+        - EMAIL_ADDRESS
+    action: block
+    alert: true
+
+  - id: SCOPE_002
+    name: approved-tools-only
+    match:
+      tool:
+        - read_database
+        - format_report
+        - send_internal_email
+    action: allow
+
+  - id: SCOPE_003
+    name: payment-api-block
+    match:
+      destination_domain: "*.payment-provider.com"
+    action: block
+    alert: true
+
+  - id: RATE_001
+    name: rate-limit-10rpm
+    type: rate_limit
+    match:
+      tool: "*"
+    max_calls_per_minute: 10
+    per_agent: true`;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const aC = a => a==="BLOCK"?"#ef4444":a==="ALERT"?"#f59e0b":"#22c55e";
+const aBg = a => a==="BLOCK"?"rgba(239,68,68,0.13)":a==="ALERT"?"rgba(245,158,11,0.13)":"rgba(34,197,94,0.13)";
+const iC = v => v==="INJECTED"?"#ef4444":v==="SUSPICIOUS"?"#f59e0b":"#22c55e";
+
+// ── Primitives ────────────────────────────────────────────────────────────────
+function Badge({label,color="#14b8a6",bg="rgba(20,184,166,0.13)"}) {
+  return <span style={{background:bg,color,border:`1px solid ${color}40`,borderRadius:4,padding:"1px 7px",fontSize:11,fontWeight:700,letterSpacing:0.3,whiteSpace:"nowrap"}}>{label}</span>;
+}
+
+function StatCard({title,value,sub,color="#f9fafb"}) {
+  return (
+    <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:10,padding:"16px 20px",flex:1,minWidth:130}}>
+      <div style={{color:"#6b7280",fontSize:11,marginBottom:5,textTransform:"uppercase",letterSpacing:0.9,fontWeight:600}}>{title}</div>
+      <div style={{color,fontSize:26,fontWeight:800,lineHeight:1.1}}>{value}</div>
+      {sub && <div style={{color:"#4b5563",fontSize:11,marginTop:5}}>{sub}</div>}
+    </div>
+  );
+}
+
+function SectionHeader({title,subtitle}) {
+  return (
+    <div style={{marginBottom:20}}>
+      <h1 style={{color:"#f9fafb",fontSize:20,fontWeight:800,margin:0}}>{title}</h1>
+      <p style={{color:"#6b7280",fontSize:12,margin:"4px 0 0",lineHeight:1.5}}>{subtitle}</p>
+    </div>
+  );
+}
+
+// ── Bar Chart ─────────────────────────────────────────────────────────────────
+function BarChart({data}) {
+  const max = Math.max(...data.map(d=>d.bl+d.al));
+  return (
+    <div>
+      <div style={{display:"flex",alignItems:"flex-end",gap:6,height:110,paddingBottom:4}}>
+        {data.map(d=>(
+          <div key={d.h} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:0}}>
+            <div style={{width:"100%",display:"flex",flexDirection:"column",gap:1}}>
+              {d.al>0 && <div style={{width:"100%",background:"#f59e0b",height:Math.round((d.al/max)*80),borderRadius:"2px 2px 0 0",minHeight:3}}/>}
+              {d.bl>0 && <div style={{width:"100%",background:"#ef4444",height:Math.round((d.bl/max)*80),borderRadius:d.al>0?"0":"2px 2px 0 0",minHeight:3}}/>}
+            </div>
+            <div style={{color:"#4b5563",fontSize:9,marginTop:4}}>{d.h}h</div>
+          </div>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:14,justifyContent:"center",marginTop:8}}>
+        {[["BLOCK","#ef4444"],["ALERT","#f59e0b"]].map(([l,c])=>(
+          <div key={l} style={{display:"flex",alignItems:"center",gap:5}}>
+            <div style={{width:10,height:10,background:c,borderRadius:2}}/>
+            <span style={{color:"#6b7280",fontSize:11}}>{l}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Pie Chart ─────────────────────────────────────────────────────────────────
+function PieChart({data}) {
+  let cum=0;
+  const r=46,cx=58,cy=58;
+  const slices = data.map(d=>{
+    const s=cum; cum+=d.pct;
+    const a1=(s/100)*2*Math.PI-Math.PI/2, a2=(cum/100)*2*Math.PI-Math.PI/2;
+    const x1=cx+r*Math.cos(a1),y1=cy+r*Math.sin(a1);
+    const x2=cx+r*Math.cos(a2),y2=cy+r*Math.sin(a2);
+    return {...d, path:`M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${d.pct>50?1:0},1 ${x2},${y2} Z`};
+  });
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:20}}>
+      <svg width={116} height={116} viewBox="0 0 116 116">
+        {slices.map(s=><path key={s.type} d={s.path} fill={s.color} stroke="#0f172a" strokeWidth={1.5}/>)}
+      </svg>
+      <div style={{display:"flex",flexDirection:"column",gap:6}}>
+        {data.map(d=>(
+          <div key={d.type} style={{display:"flex",alignItems:"center",gap:7}}>
+            <div style={{width:9,height:9,borderRadius:2,background:d.color,flexShrink:0}}/>
+            <span style={{color:"#d1d5db",fontSize:12}}>{d.type}</span>
+            <span style={{color:"#4b5563",fontSize:11,marginLeft:4}}>{d.count} ({d.pct}%)</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Latency Row ───────────────────────────────────────────────────────────────
+function LatencyRow({label,p50,p95,p99,sla=50}) {
+  return (
+    <div style={{marginBottom:14}}>
+      <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
+        <span style={{color:"#9ca3af",fontSize:12}}>{label}</span>
+        <div style={{display:"flex",gap:12,fontSize:11}}>
+          <span style={{color:"#22c55e"}}>p50: {p50}ms</span>
+          <span style={{color:"#f59e0b"}}>p95: {p95}ms</span>
+          <span style={{color:p99>sla?"#ef4444":"#f97316"}}>p99: {p99}ms</span>
+        </div>
+      </div>
+      <div style={{background:"#1f2937",borderRadius:4,height:7,position:"relative"}}>
+        <div style={{position:"absolute",left:0,top:0,height:"100%",width:`${Math.min((p99/sla)*100,100)}%`,background:"linear-gradient(90deg,#22c55e,#f59e0b,#f97316)",borderRadius:4}}/>
+        <div style={{position:"absolute",left:"100%",top:-3,bottom:-3,width:1,background:"#ef4444",opacity:0.5}}/>
+      </div>
+    </div>
+  );
+}
+
+// ── Login ─────────────────────────────────────────────────────────────────────
+function Login({onLogin}) {
+  return (
+    <div style={{minHeight:"100vh",background:"#030712",display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div className="slide-up" style={{width:420,padding:"48px 40px",background:"#0f172a",border:"1px solid #1e293b",borderRadius:16,boxShadow:"0 25px 60px rgba(0,0,0,0.7)"}}>
+        {/* Logo */}
+        <div style={{textAlign:"center",marginBottom:36}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:10}}>
+            <div style={{width:42,height:42,background:"linear-gradient(135deg,#0d9488,#0891b2)",borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center"}}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </div>
+            <div style={{textAlign:"left"}}>
+              <div style={{color:"#14b8a6",fontSize:10,fontWeight:700,letterSpacing:2.5,textTransform:"uppercase"}}>STRIDEMAP.AI</div>
+              <div style={{color:"#f9fafb",fontSize:22,fontWeight:800,lineHeight:1.1}}>AgentGuard</div>
+            </div>
+          </div>
+          <p style={{color:"#6b7280",fontSize:13,margin:0}}>AI Agent Governance Layer for the Enterprise</p>
+        </div>
+
+        <div style={{marginBottom:14}}>
+          <label style={{color:"#9ca3af",fontSize:11,fontWeight:700,display:"block",marginBottom:6,letterSpacing:0.8,textTransform:"uppercase"}}>Email</label>
+          <input defaultValue="ciso@enterprise.com" style={{width:"100%",background:"#1e293b",border:"1px solid #334155",borderRadius:8,padding:"10px 14px",color:"#f1f5f9",fontSize:14,outline:"none"}}/>
+        </div>
+        <div style={{marginBottom:24}}>
+          <label style={{color:"#9ca3af",fontSize:11,fontWeight:700,display:"block",marginBottom:6,letterSpacing:0.8,textTransform:"uppercase"}}>Password</label>
+          <input type="password" defaultValue="••••••••••" style={{width:"100%",background:"#1e293b",border:"1px solid #334155",borderRadius:8,padding:"10px 14px",color:"#f1f5f9",fontSize:14,outline:"none"}}/>
+        </div>
+
+        <button onClick={()=>onLogin("admin")} style={{width:"100%",background:"linear-gradient(135deg,#0d9488,#0891b2)",color:"white",border:"none",borderRadius:8,padding:"12px",fontSize:15,fontWeight:700,cursor:"pointer",letterSpacing:0.4,marginBottom:12}}>
+          Sign in as Admin
+        </button>
+
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+          {[["SOC Analyst","👁️"],["Compliance Officer","📋"],["Platform Engineer","⚙️"]].map(([r,icon])=>(
+            <button key={r} onClick={()=>onLogin(r)} style={{background:"rgba(255,255,255,0.03)",border:"1px solid #1e293b",borderRadius:7,padding:"8px 6px",color:"#6b7280",fontSize:11,cursor:"pointer",textAlign:"center"}}>
+              <div style={{fontSize:16,marginBottom:3}}>{icon}</div>
+              <div style={{fontWeight:500}}>{r}</div>
+            </button>
+          ))}
+        </div>
+
+        <div style={{marginTop:20,textAlign:"center",color:"#374151",fontSize:11}}>
+          🔒 VPC-only deployment · Zero data leaves your environment
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Sidebar ───────────────────────────────────────────────────────────────────
+function Sidebar({active,setActive,role}) {
+  const nav=[
+    {id:"live",icon:"⚡",label:"Live Feed"},
+    {id:"violations",icon:"🚨",label:"Violations"},
+    {id:"health",icon:"📊",label:"System Health"},
+    {id:"policy",icon:"🔧",label:"Policy Engine"},
+    {id:"audit",icon:"🔗",label:"Audit Chain"},
+    {id:"compliance",icon:"📋",label:"Compliance"},
+  ];
+  return (
+    <div style={{width:200,background:"#070f1e",borderRight:"1px solid #1e293b",display:"flex",flexDirection:"column",flexShrink:0}}>
+      <div style={{padding:"18px 14px 14px",borderBottom:"1px solid #1e293b"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <div style={{width:32,height:32,background:"linear-gradient(135deg,#0d9488,#0891b2)",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <div>
+            <div style={{color:"#14b8a6",fontSize:8.5,fontWeight:700,letterSpacing:1.8,textTransform:"uppercase"}}>STRIDEMAP.AI</div>
+            <div style={{color:"#f9fafb",fontSize:14,fontWeight:800}}>AgentGuard</div>
+          </div>
+        </div>
+      </div>
+
+      <nav style={{flex:1,padding:"10px 8px"}}>
+        {nav.map(n=>(
+          <button key={n.id} onClick={()=>setActive(n.id)} style={{width:"100%",display:"flex",alignItems:"center",gap:9,padding:"9px 11px",borderRadius:8,border:"none",background:active===n.id?"rgba(20,184,166,0.14)":"transparent",color:active===n.id?"#14b8a6":"#6b7280",fontSize:13,fontWeight:active===n.id?700:400,cursor:"pointer",marginBottom:1,textAlign:"left",transition:"all 0.15s"}}>
+            <span style={{fontSize:15}}>{n.icon}</span>
+            <span style={{flex:1}}>{n.label}</span>
+            {n.id==="live" && <span className="live-dot" style={{width:6,height:6,background:"#22c55e",borderRadius:"50%",flexShrink:0}}/>}
+          </button>
+        ))}
+      </nav>
+
+      <div style={{padding:"12px 14px",borderTop:"1px solid #1e293b"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <div style={{width:28,height:28,background:"#1e293b",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",color:"#9ca3af",fontSize:11,fontWeight:700,flexShrink:0}}>
+            {(role||"A").charAt(0).toUpperCase()}
+          </div>
+          <div style={{overflow:"hidden"}}>
+            <div style={{color:"#e2e8f0",fontSize:12,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{role||"Admin"}</div>
+            <div style={{color:"#14b8a6",fontSize:10}}>● online</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Live Feed ─────────────────────────────────────────────────────────────────
+function LiveFeed({onEventClick}) {
+  const [filter,setFilter] = useState("ALL");
+  const [tick,setTick] = useState(0);
+  useEffect(()=>{const t=setInterval(()=>setTick(x=>x+1),2000);return()=>clearInterval(t);},[]);
+  const rows = filter==="ALL"?EVENTS:EVENTS.filter(e=>e.action===filter);
+
+  return (
+    <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+      {/* Top bar */}
+      <div style={{padding:"16px 24px 12px",borderBottom:"1px solid #1e293b",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+        <div>
+          <h1 style={{color:"#f9fafb",fontSize:20,fontWeight:800,margin:0}}>Live Activity Feed</h1>
+          <p style={{color:"#6b7280",fontSize:12,margin:"3px 0 0"}}>Real-time agent tool call monitoring · Auto-refresh every 2s</p>
+        </div>
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          <span className="live-dot" style={{width:7,height:7,background:"#22c55e",borderRadius:"50%",display:"inline-block",marginRight:4}}/>
+          <span style={{color:"#22c55e",fontSize:12,fontWeight:600,marginRight:10}}>LIVE</span>
+          {["ALL","BLOCK","ALERT","ALLOW"].map(f=>(
+            <button key={f} onClick={()=>setFilter(f)} style={{padding:"5px 11px",borderRadius:6,border:`1px solid ${f===filter?(f==="ALL"?"#14b8a6":aC(f)):"#1e293b"}`,background:f===filter?(f==="ALL"?"rgba(20,184,166,0.13)":aBg(f)):"transparent",color:f===filter?(f==="ALL"?"#14b8a6":aC(f)):"#6b7280",fontSize:11,fontWeight:600,cursor:"pointer"}}>
+              {f}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div style={{display:"flex",gap:12,padding:"12px 24px",borderBottom:"1px solid #1e293b",background:"#070f1e",flexShrink:0}}>
+        <StatCard title="Total Events" value="1,247" sub={`+${tick*2} since load`}/>
+        <StatCard title="Blocked" value="43" sub="last 1hr" color="#ef4444"/>
+        <StatCard title="Alerts" value="18" sub="last 1hr" color="#f59e0b"/>
+        <StatCard title="PII Detections" value="27" sub="outbound blocked" color="#8b5cf6"/>
+        <StatCard title="Injections" value="3" sub="quarantined" color="#f97316"/>
+        <StatCard title="p99 Latency" value="31ms" sub="interceptor overhead" color="#22c55e"/>
+      </div>
+
+      {/* Table */}
+      <div style={{flex:1,overflow:"auto",padding:"0 24px 24px"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",marginTop:16}}>
+          <thead>
+            <tr>
+              {["Time","Agent","Tool","Decision","Latency","Risk Flags","Inject Verdict","Policy","Chain"].map(h=>(
+                <th key={h} style={{textAlign:"left",color:"#374151",fontSize:10.5,fontWeight:700,padding:"0 12px 10px",textTransform:"uppercase",letterSpacing:0.7,borderBottom:"1px solid #1e293b",whiteSpace:"nowrap"}}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((e,i)=>(
+              <tr key={e.id} className="event-row" onClick={()=>onEventClick(e)} style={{cursor:"pointer",background:i%2===0?"transparent":"rgba(255,255,255,0.01)"}}>
+                <td style={{padding:"10px 12px",color:"#6b7280",fontSize:11}} className="mono">{e.ts}</td>
+                <td style={{padding:"10px 12px",color:"#e2e8f0",fontSize:12,fontWeight:500}}>{e.agent}</td>
+                <td style={{padding:"10px 12px",color:"#93c5fd",fontSize:12}} className="mono">{e.tool}</td>
+                <td style={{padding:"10px 12px"}}>
+                  <span style={{background:aBg(e.action),color:aC(e.action),border:`1px solid ${aC(e.action)}40`,borderRadius:4,padding:"2px 8px",fontSize:11,fontWeight:700}}>{e.action}</span>
+                </td>
+                <td style={{padding:"10px 12px",color:e.ms>30?"#f59e0b":"#22c55e",fontSize:12,fontWeight:600}} className="mono">{e.ms}ms</td>
+                <td style={{padding:"10px 12px"}}>
+                  <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
+                    {e.risk.map(r=><Badge key={r} label={r.replace("_"," ")} color="#f97316" bg="rgba(249,115,22,0.1)"/>)}
+                    {!e.risk.length && <span style={{color:"#374151",fontSize:11}}>—</span>}
+                  </div>
+                </td>
+                <td style={{padding:"10px 12px"}}>
+                  <span style={{color:iC(e.inject),fontSize:11,fontWeight:700}}>{e.inject}</span>
+                </td>
+                <td style={{padding:"10px 12px",color:"#4b5563",fontSize:11}} className="mono">{e.policy||"—"}</td>
+                <td style={{padding:"10px 12px",color:"#1f2937",fontSize:11}} className="mono">{e.chain}…</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div style={{textAlign:"center",padding:"16px 0",color:"#374151",fontSize:12}}>
+          Showing {rows.length} events · Click any row to inspect · SHA-256 hashes only — raw payloads never stored
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Event Detail Panel ────────────────────────────────────────────────────────
+function EventDetail({ev,onClose}) {
+  if(!ev) return null;
+  return (
+    <div className="fade-in" style={{position:"fixed",right:0,top:0,bottom:0,width:440,background:"#0a1628",borderLeft:"1px solid #1e293b",zIndex:200,overflow:"auto",padding:24,boxShadow:"-12px 0 40px rgba(0,0,0,0.7)"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h2 style={{color:"#f9fafb",fontSize:16,fontWeight:800,margin:0}}>Event Inspector</h2>
+        <button onClick={onClose} style={{background:"#1e293b",border:"none",color:"#9ca3af",width:28,height:28,borderRadius:6,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+      </div>
+
+      {/* Decision banner */}
+      <div style={{background:aBg(ev.action),border:`1px solid ${aC(ev.action)}35`,borderRadius:8,padding:"12px 16px",marginBottom:18,display:"flex",alignItems:"center",gap:12}}>
+        <span style={{fontSize:26}}>{ev.action==="BLOCK"?"🛑":ev.action==="ALERT"?"⚠️":"✅"}</span>
+        <div>
+          <div style={{color:aC(ev.action),fontSize:18,fontWeight:800}}>{ev.action}</div>
+          <div style={{color:"#9ca3af",fontSize:12}}>Policy matched: <span className="mono" style={{color:"#d1d5db"}}>{ev.policy||"default-action"}</span></div>
+        </div>
+      </div>
+
+      {/* Fields */}
+      {[
+        ["Event ID",ev.id],["Timestamp",`2026-04-08T${ev.ts}Z`],
+        ["Agent ID",ev.agent],["Tool Name",ev.tool],
+        ["Latency",`${ev.ms}ms`],["Session ID","sess-7f2a9c31-b4e1"],
+        ["Run ID","run-a8d3f1c2-9e47"],
+      ].map(([k,v])=>(
+        <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:"1px solid #1a2336"}}>
+          <span style={{color:"#4b5563",fontSize:12}}>{k}</span>
+          <span style={{color:"#e2e8f0",fontSize:12,fontFamily:"JetBrains Mono,monospace"}}>{v}</span>
+        </div>
+      ))}
+
+      {/* Hashes */}
+      <div style={{marginTop:18}}>
+        <div style={{color:"#14b8a6",fontSize:11,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:1}}>Input / Output Hashes</div>
+        <div style={{background:"#050d1a",borderRadius:8,padding:14,fontSize:11,lineHeight:1.7}} className="mono">
+          <div style={{color:"#4b5563",marginBottom:4}}>// Raw payloads never stored — SHA-256 only</div>
+          <div><span style={{color:"#93c5fd"}}>input_hash: </span><span style={{color:"#d1d5db"}}>sha256:7f83b1657ff1fc5...</span></div>
+          <div><span style={{color:"#93c5fd"}}>output_hash: </span><span style={{color:"#d1d5db"}}>sha256:2c624232cdd2217...</span></div>
+        </div>
+      </div>
+
+      {/* PII */}
+      {ev.pii.length>0 && (
+        <div style={{marginTop:18}}>
+          <div style={{color:"#ef4444",fontSize:11,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:1}}>⚠ PII Detected (Microsoft Presidio)</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:8}}>
+            {ev.pii.map(p=><Badge key={p} label={p} color="#ef4444" bg="rgba(239,68,68,0.1)"/>)}
+          </div>
+          <div style={{color:"#4b5563",fontSize:11,lineHeight:1.5}}>Detected locally · 100% on-device · DLP rule {ev.policy} matched · Tool call blocked before execution</div>
+        </div>
+      )}
+
+      {/* Injection */}
+      {ev.inject!=="CLEAN" && (
+        <div style={{marginTop:18}}>
+          <div style={{color:iC(ev.inject),fontSize:11,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:1}}>🔍 Injection Analysis</div>
+          <div style={{background:"#050d1a",borderRadius:8,padding:14}}>
+            {[["Verdict",ev.inject,iC(ev.inject)],["Confidence",ev.inject==="INJECTED"?"0.97":"0.61","#d1d5db"],["Stage",ev.inject==="INJECTED"?"1 — Regex Pattern Library":"2 — LLM Classifier","#9ca3af"],["Pattern",ev.inject==="INJECTED"?"data_exfil_redirect":"instruction_override","#d1d5db"]].map(([k,v,c])=>(
+              <div key={k} style={{display:"flex",justifyContent:"space-between",marginBottom:7}}>
+                <span style={{color:"#4b5563",fontSize:12}}>{k}</span>
+                <span style={{color:c,fontSize:12,fontWeight:k==="Verdict"?700:400}} className="mono">{v}</span>
+              </div>
+            ))}
+            {ev.inject==="INJECTED" && (
+              <div style={{marginTop:10,background:"rgba(239,68,68,0.07)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:6,padding:"8px 12px"}}>
+                <div style={{color:"#ef4444",fontSize:11,fontWeight:700,marginBottom:3}}>QUARANTINE MODE ACTIVE</div>
+                <div style={{color:"#9ca3af",fontSize:11}}>Injection replaced with [INJECTION_REMOVED]. Agent received sanitised input. Original payload hashed in log.</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Chain */}
+      <div style={{marginTop:18}}>
+        <div style={{color:"#14b8a6",fontSize:11,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:1}}>🔗 Audit Chain Entry</div>
+        <div style={{background:"#050d1a",borderRadius:8,padding:14,fontSize:11}} className="mono">
+          <div style={{color:"#22c55e",marginBottom:5}}>✓ chain_integrity: VALID</div>
+          <div><span style={{color:"#4b5563"}}>chain_hash: </span><span style={{color:"#9ca3af"}}>{ev.chain}1d6f2c4...9a3b</span></div>
+          <div style={{marginTop:3}}><span style={{color:"#4b5563"}}>prev_hash: </span><span style={{color:"#9ca3af"}}>c7d1a4f880...3a91</span></div>
+          <div style={{marginTop:3}}><span style={{color:"#4b5563"}}>append_only: </span><span style={{color:"#86efac"}}>true</span></div>
+        </div>
+      </div>
+
+      <div style={{marginTop:18,display:"flex",gap:8}}>
+        <button style={{flex:1,background:"rgba(20,184,166,0.11)",border:"1px solid rgba(20,184,166,0.28)",color:"#14b8a6",borderRadius:7,padding:"9px",fontSize:12,fontWeight:600,cursor:"pointer"}}>Export Event</button>
+        <button style={{flex:1,background:"rgba(99,102,241,0.11)",border:"1px solid rgba(99,102,241,0.28)",color:"#a78bfa",borderRadius:7,padding:"9px",fontSize:12,fontWeight:600,cursor:"pointer"}}>View Session</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Violations ────────────────────────────────────────────────────────────────
+function Violations() {
+  return (
+    <div style={{flex:1,overflow:"auto",padding:24}}>
+      <SectionHeader title="Violations Dashboard" subtitle="Policy violations · PII detections · Injection events — Last 24 hours"/>
+
+      <div style={{display:"flex",gap:12,marginBottom:22}}>
+        <StatCard title="Total Violations" value="61" sub="last 24hrs" color="#ef4444"/>
+        <StatCard title="Blocked Calls" value="43" sub="execution prevented" color="#ef4444"/>
+        <StatCard title="Alerts Raised" value="18" sub="logged + alerted" color="#f59e0b"/>
+        <StatCard title="PII Detections" value="44" sub="all entity types" color="#8b5cf6"/>
+        <StatCard title="Injections Caught" value="3" sub="quarantined" color="#f97316"/>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18,marginBottom:18}}>
+        <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:10,padding:20}}>
+          <div style={{color:"#6b7280",fontSize:11,fontWeight:700,marginBottom:14,textTransform:"uppercase",letterSpacing:0.9}}>Violations Per Hour (Last 8 Hours)</div>
+          <BarChart data={VIOLATIONS_HOURLY}/>
+        </div>
+        <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:10,padding:20}}>
+          <div style={{color:"#6b7280",fontSize:11,fontWeight:700,marginBottom:14,textTransform:"uppercase",letterSpacing:0.9}}>PII Entity Type Distribution</div>
+          <PieChart data={PII_DATA}/>
+        </div>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18}}>
+        <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:10,padding:20}}>
+          <div style={{color:"#6b7280",fontSize:11,fontWeight:700,marginBottom:16,textTransform:"uppercase",letterSpacing:0.9}}>Top Policy Rules Triggered</div>
+          {TOP_POLICIES.map(p=>(
+            <div key={p.id} style={{display:"flex",alignItems:"center",gap:12,marginBottom:13}}>
+              <span style={{background:aBg(p.action),color:aC(p.action),border:`1px solid ${aC(p.action)}40`,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700,flexShrink:0}}>{p.action}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{color:"#e2e8f0",fontSize:12,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</div>
+                <div style={{color:"#374151",fontSize:10}} className="mono">{p.id}</div>
+              </div>
+              <div style={{width:90,background:"#1f2937",borderRadius:4,height:5,flexShrink:0}}>
+                <div style={{height:"100%",width:`${(p.hits/25)*100}%`,background:p.action==="BLOCK"?"#ef4444":"#22c55e",borderRadius:4}}/>
+              </div>
+              <span style={{color:aC(p.action),fontSize:13,fontWeight:700,width:22,textAlign:"right",flexShrink:0}}>{p.hits}</span>
+            </div>
+          ))}
+        </div>
+
+        <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:10,padding:20}}>
+          <div style={{color:"#6b7280",fontSize:11,fontWeight:700,marginBottom:16,textTransform:"uppercase",letterSpacing:0.9}}>Top Violating Agents</div>
+          {[
+            {id:"support-agent-1",v:19,type:"Support",icon:"💬"},
+            {id:"support-agent-2",v:14,type:"Support",icon:"💬"},
+            {id:"finance-agent-1",v:11,type:"Finance",icon:"💰"},
+            {id:"hr-agent-1",v:9,type:"HR",icon:"👥"},
+            {id:"finance-agent-2",v:8,type:"Finance",icon:"💰"},
+          ].map(a=>(
+            <div key={a.id} style={{display:"flex",alignItems:"center",gap:11,marginBottom:11}}>
+              <div style={{width:30,height:30,background:"#1e293b",borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,flexShrink:0}}>{a.icon}</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{color:"#e2e8f0",fontSize:12}} className="mono">{a.id}</div>
+                <div style={{color:"#374151",fontSize:11}}>{a.type} Agent</div>
+              </div>
+              <div style={{width:80,background:"#1f2937",borderRadius:4,height:5,flexShrink:0}}>
+                <div style={{height:"100%",width:`${(a.v/20)*100}%`,background:"linear-gradient(90deg,#f97316,#ef4444)",borderRadius:4}}/>
+              </div>
+              <span style={{color:"#f97316",fontSize:13,fontWeight:700,width:20,textAlign:"right",flexShrink:0}}>{a.v}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── System Health ─────────────────────────────────────────────────────────────
+function Health() {
+  return (
+    <div style={{flex:1,overflow:"auto",padding:24}}>
+      <SectionHeader title="System Health" subtitle="Infrastructure metrics · Latency budget · Component status · Queue depth"/>
+
+      <div style={{display:"flex",gap:12,marginBottom:22}}>
+        <StatCard title="Events / sec" value="8.3" sub="5m avg: 7.1" color="#22c55e"/>
+        <StatCard title="Queue Depth" value="12" sub="target: stable" color="#22c55e"/>
+        <StatCard title="DB Size" value="2.4 GB" sub="PostgreSQL 15"/>
+        <StatCard title="Chain Status" value="VALID ✓" sub="verified 14:31:58" color="#22c55e"/>
+        <StatCard title="Uptime" value="99.97%" sub="last 30 days" color="#22c55e"/>
+        <StatCard title="Total Events" value="1,247" sub="in audit chain"/>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18,marginBottom:18}}>
+        <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:10,padding:20}}>
+          <div style={{color:"#6b7280",fontSize:11,fontWeight:700,marginBottom:18,textTransform:"uppercase",letterSpacing:0.9}}>Interceptor Latency Budget (p50 / p95 / p99 · SLA: 50ms)</div>
+          <LatencyRow label="Queue Write (async)" p50={2} p95={3} p99={4}/>
+          <LatencyRow label="Policy Evaluation" p50={1} p95={3} p99={4}/>
+          <LatencyRow label="DLP Scan (Presidio)" p50={8} p95={14} p99={18}/>
+          <LatencyRow label="Injection Scan Stage 1 (regex)" p50={1} p95={2} p99={4}/>
+          <LatencyRow label="Total Interceptor Overhead" p50={13} p95={22} p99={31}/>
+          <div style={{marginTop:14,background:"rgba(34,197,94,0.07)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:7,padding:"10px 14px",display:"flex",alignItems:"center",gap:10}}>
+            <span style={{color:"#22c55e",fontSize:18}}>✓</span>
+            <div>
+              <div style={{color:"#22c55e",fontSize:12,fontWeight:700}}>p99 = 31ms — Within 50ms SLA Budget</div>
+              <div style={{color:"#4b5563",fontSize:11,marginTop:2}}>Fail-open guarantee active · Agents never blocked by AgentGuard failures</div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:10,padding:20}}>
+          <div style={{color:"#6b7280",fontSize:11,fontWeight:700,marginBottom:16,textTransform:"uppercase",letterSpacing:0.9}}>Component Health</div>
+          {[
+            ["Interceptor Layer","HEALTHY","Fail-open guarantee · LangGraph BaseCallbackHandler","#22c55e"],
+            ["Policy Engine","HEALTHY","14 rules loaded · last reload 09:01 · hot-reload active","#22c55e"],
+            ["DLP Scanner (Presidio)","HEALTHY","Local NLP only · 0 external API calls · <20ms p99","#22c55e"],
+            ["Injection Detector","HEALTHY","Stage 1 regex active · Stage 2 LLM classifier standby","#22c55e"],
+            ["Event Store (PostgreSQL)","HEALTHY","Append-only · audit chain valid · 0 lock errors","#22c55e"],
+            ["Async Queue","HEALTHY","Depth: 12 · 0 events dropped in 24h · <5ms p99","#22c55e"],
+            ["FastAPI REST Layer","HEALTHY","JWT auth · /health 200 OK · /metrics Prometheus ready","#22c55e"],
+            ["SIEM Webhook (Splunk)","CONFIGURED","Last push: 14:31:55 · CEF format · retry on failure","#f59e0b"],
+          ].map(([name,status,note,color])=>(
+            <div key={name} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,paddingBottom:10,borderBottom:"1px solid #1a2336"}}>
+              <div style={{width:7,height:7,borderRadius:"50%",background:color,flexShrink:0}}/>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{color:"#e2e8f0",fontSize:12,fontWeight:500}}>{name}</div>
+                <div style={{color:"#374151",fontSize:11,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{note}</div>
+              </div>
+              <span style={{color,fontSize:11,fontWeight:700,flexShrink:0}}>{status}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:10,padding:20}}>
+        <div style={{color:"#6b7280",fontSize:11,fontWeight:700,marginBottom:12,textTransform:"uppercase",letterSpacing:0.9}}>GET /health — Live Response</div>
+        <div style={{background:"#050d1a",borderRadius:8,padding:16,fontSize:12,lineHeight:1.8}} className="mono">
+          <span style={{color:"#22c55e"}}>{`{`}</span>
+          <div style={{paddingLeft:20}}>
+            {[["status","\"healthy\"","#86efac"],["db_connection","\"ok\"","#86efac"],["queue_depth","12","#fbbf24"],["events_per_second","8.3","#fbbf24"],["agentguard_blocks_total","43","#fca5a5"],["agentguard_latency_p99","31","#fbbf24"],["version","\"1.0.0\"","#86efac"],["chain_verified_at","\"2026-04-08T14:31:58Z\"","#86efac"]].map(([k,v,c],i,arr)=>(
+              <div key={k}><span style={{color:"#93c5fd"}}>"{k}"</span><span style={{color:"#6b7280"}}>: </span><span style={{color:c}}>{v}</span>{i<arr.length-1?",":""}</div>
+            ))}
+          </div>
+          <span style={{color:"#22c55e"}}>{`}`}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Policy Engine ─────────────────────────────────────────────────────────────
+function Policy() {
+  const [yaml,setYaml] = useState(YAML_POLICY);
+  const [result,setResult] = useState(null);
+  const [reloading,setReloading] = useState(false);
+
+  const test = ()=>{
+    setResult({decision:"BLOCK",rule:"DLP_001",reason:"SSN detected in tool output destined for external domain api.thirdparty.com · data_pattern: SSN · direction: outbound"});
+    setTimeout(()=>setResult(null),6000);
+  };
+  const reload = ()=>{
+    setReloading(true);
+    setTimeout(()=>setReloading(false),1500);
+  };
+
+  return (
+    <div style={{flex:1,overflow:"auto",padding:24}}>
+      <SectionHeader title="Policy Engine" subtitle="YAML security policies · Version-controlled alongside agent code · Hot-reload without agent restart · <5ms p99 evaluation"/>
+
+      <div style={{display:"flex",gap:12,marginBottom:20}}>
+        <StatCard title="Active Rules" value="14" sub="4 policy files"/>
+        <StatCard title="Last Reload" value="09:01" sub="POST /policies/reload"/>
+        <StatCard title="Eval Latency" value="<5ms" sub="p99 in-memory" color="#22c55e"/>
+        <StatCard title="Default Action" value="BLOCK" sub="finance-production.yaml" color="#ef4444"/>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"3fr 2fr",gap:18}}>
+        {/* Editor */}
+        <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:10,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+          <div style={{padding:"12px 16px",borderBottom:"1px solid #1f2937",display:"flex",justifyContent:"space-between",alignItems:"center",background:"#0d1117",flexShrink:0}}>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <span style={{color:"#f59e0b",fontSize:13}}>📄</span>
+              <span style={{color:"#e2e8f0",fontSize:13,fontWeight:600}} className="mono">finance-production.yaml</span>
+            </div>
+            <div style={{display:"flex",gap:7}}>
+              <button onClick={reload} style={{background:reloading?"rgba(20,184,166,0.05)":"rgba(20,184,166,0.11)",border:"1px solid rgba(20,184,166,0.28)",color:reloading?"#4b5563":"#14b8a6",borderRadius:6,padding:"4px 10px",fontSize:11,fontWeight:600,cursor:reloading?"not-allowed":"pointer"}}>
+                {reloading?"⟳ Reloading...":"↻ Hot Reload"}
+              </button>
+              <button onClick={test} style={{background:"rgba(99,102,241,0.11)",border:"1px solid rgba(99,102,241,0.28)",color:"#a78bfa",borderRadius:6,padding:"4px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>▶ Test Policy</button>
+            </div>
+          </div>
+          <textarea value={yaml} onChange={e=>setYaml(e.target.value)} style={{flex:1,background:"#070f1a",color:"#d1fae5",fontSize:12,padding:18,border:"none",resize:"none",outline:"none",lineHeight:1.75,minHeight:400}}/>
+        </div>
+
+        {/* Right panel */}
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          {result && (
+            <div className="slide-up" style={{background:"rgba(239,68,68,0.07)",border:"1px solid rgba(239,68,68,0.28)",borderRadius:10,padding:16}}>
+              <div style={{color:"#ef4444",fontSize:13,fontWeight:700,marginBottom:8}}>🛑 Test Result: {result.decision}</div>
+              <div style={{color:"#9ca3af",fontSize:12,marginBottom:5}}>Matched: <span style={{color:"#fca5a5",fontFamily:"JetBrains Mono,monospace"}}>{result.rule}</span></div>
+              <div style={{color:"#6b7280",fontSize:12}}>{result.reason}</div>
+            </div>
+          )}
+
+          <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:10,padding:18}}>
+            <div style={{color:"#6b7280",fontSize:11,fontWeight:700,marginBottom:12,textTransform:"uppercase",letterSpacing:0.9}}>Loaded Policy Files</div>
+            {[["finance-production.yaml",4],["hr-agents.yaml",3],["support-agents.yaml",5],["global-defaults.yaml",2]].map(([f,n])=>(
+              <div key={f} style={{display:"flex",alignItems:"center",gap:9,padding:"7px 0",borderBottom:"1px solid #1a2336"}}>
+                <span style={{color:"#14b8a6",fontSize:12}}>📄</span>
+                <span style={{color:"#e2e8f0",fontSize:12,flex:1}} className="mono">{f}</span>
+                <span style={{color:"#374151",fontSize:11}}>{n} rules</span>
+                <span style={{color:"#22c55e",fontSize:10,fontWeight:700}}>ACTIVE</span>
+              </div>
+            ))}
+          </div>
+
+          <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:10,padding:18}}>
+            <div style={{color:"#6b7280",fontSize:11,fontWeight:700,marginBottom:12,textTransform:"uppercase",letterSpacing:0.9}}>Rule Match Fields</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+              {["tool","destination_domain","data_patterns","direction","agent_id","rate_limit","wildcard (*)","*.domain.com","allow / block / alert"].map(t=>(
+                <Badge key={t} label={t} color="#14b8a6" bg="rgba(20,184,166,0.09)"/>
+              ))}
+            </div>
+          </div>
+
+          <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:10,padding:18}}>
+            <div style={{color:"#6b7280",fontSize:11,fontWeight:700,marginBottom:10,textTransform:"uppercase",letterSpacing:0.9}}>POST /policies/test</div>
+            <div style={{background:"#050d1a",borderRadius:7,padding:12,fontSize:11,lineHeight:1.7}} className="mono">
+              <div style={{color:"#4b5563",marginBottom:4}}>// Returns: decision, matched_rule, reason</div>
+              <div style={{color:"#93c5fd"}}>{`{`}</div>
+              <div style={{paddingLeft:16,color:"#d1d5db"}}>
+                <div><span style={{color:"#93c5fd"}}>"policy_id"</span>: <span style={{color:"#86efac"}}>"DLP_001"</span>,</div>
+                <div><span style={{color:"#93c5fd"}}>"tool_call"</span>: {`{ "tool": "send_email",`}</div>
+                <div style={{paddingLeft:16}}><span style={{color:"#86efac"}}>"output": "SSN: 123-45-6789" {`}`}</span></div>
+              </div>
+              <div style={{color:"#93c5fd"}}>{`}`}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Audit Chain ───────────────────────────────────────────────────────────────
+function AuditChain() {
+  const [verifying,setVerifying] = useState(false);
+  const [verified,setVerified] = useState(false);
+
+  const verify=()=>{
+    setVerifying(true);
+    setTimeout(()=>{setVerifying(false);setVerified(true);},1800);
+  };
+
+  return (
+    <div style={{flex:1,overflow:"auto",padding:24}}>
+      <SectionHeader title="Tamper-Proof Audit Chain" subtitle="SHA-256 cryptographic chaining · Append-only Event Store · Any modification breaks the chain — detectable and provable"/>
+
+      <div style={{display:"flex",gap:12,marginBottom:20}}>
+        <StatCard title="Total Events" value="1,247" sub="in audit chain"/>
+        <StatCard title="Chain Status" value={verified?"VALID ✓":"UNVERIFIED"} sub={verified?"All hashes match":"Click Verify Chain"} color={verified?"#22c55e":"#f59e0b"}/>
+        <StatCard title="Last Verified" value="14:31:58" sub="via CLI / API"/>
+        <StatCard title="Verify Duration" value="2.3s" sub="for 1,247 events" color="#22c55e"/>
+        <StatCard title="Dropped Events" value="0" sub="last 24h" color="#22c55e"/>
+      </div>
+
+      <div style={{display:"flex",gap:10,marginBottom:18}}>
+        <button onClick={verify} disabled={verifying} style={{background:verifying?"rgba(20,184,166,0.04)":"rgba(20,184,166,0.11)",border:"1px solid rgba(20,184,166,0.28)",color:verifying?"#4b5563":"#14b8a6",borderRadius:8,padding:"9px 18px",fontSize:13,fontWeight:600,cursor:verifying?"not-allowed":"pointer"}}>
+          {verifying?"⟳ Verifying chain integrity...":"🔗 Verify Chain Integrity"}
+        </button>
+        <button style={{background:"rgba(99,102,241,0.11)",border:"1px solid rgba(99,102,241,0.28)",color:"#a78bfa",borderRadius:8,padding:"9px 18px",fontSize:13,fontWeight:600,cursor:"pointer"}}>📥 Export Audit PDF</button>
+        <select style={{background:"#1e293b",border:"1px solid #334155",color:"#9ca3af",borderRadius:8,padding:"8px 14px",fontSize:13,cursor:"pointer",marginLeft:"auto"}}>
+          <option>Last 24 hours</option><option>Last 7 days</option><option>Last 30 days</option><option>Q1 2026</option>
+        </select>
+      </div>
+
+      {verified && (
+        <div className="slide-up" style={{background:"rgba(34,197,94,0.07)",border:"1px solid rgba(34,197,94,0.22)",borderRadius:10,padding:16,marginBottom:18,display:"flex",alignItems:"center",gap:14}}>
+          <span style={{fontSize:26,flexShrink:0}}>✅</span>
+          <div>
+            <div style={{color:"#22c55e",fontSize:14,fontWeight:700}}>Chain Integrity Verified — VALID</div>
+            <div style={{color:"#9ca3af",fontSize:12,marginTop:3}}>1,247 events verified · No tampering detected · valid=True · broken_at=None · Duration: 2.3s</div>
+            <div style={{color:"#374151",fontSize:11,marginTop:5}} className="mono">agentguard audit verify --from 2026-04-07T00:00:00Z --to 2026-04-08T14:32:15Z</div>
+          </div>
+        </div>
+      )}
+
+      {/* Chain entry diagram */}
+      <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:10,padding:18,marginBottom:18}}>
+        <div style={{color:"#6b7280",fontSize:11,fontWeight:700,marginBottom:14,textTransform:"uppercase",letterSpacing:0.9}}>Cryptographic Chain Structure</div>
+        <div style={{display:"flex",alignItems:"center",gap:0,overflowX:"auto",paddingBottom:8}}>
+          {["Genesis","Event N-2","Event N-1","Event N"].map((label,i)=>(
+            <React.Fragment key={label}>
+              <div style={{flexShrink:0,background:"#0d1117",border:"1px solid #1e293b",borderRadius:8,padding:"10px 14px",minWidth:140}}>
+                <div style={{color:"#14b8a6",fontSize:10,fontWeight:700,marginBottom:6,textTransform:"uppercase"}}>{label}</div>
+                <div style={{color:"#4b5563",fontSize:10}} className="mono">event_hash:</div>
+                <div style={{color:"#9ca3af",fontSize:10}} className="mono">sha256(event_data)</div>
+                <div style={{color:"#4b5563",fontSize:10,marginTop:4}} className="mono">chain_hash:</div>
+                <div style={{color:"#9ca3af",fontSize:10}} className="mono">{i===0?"sha256(event_id+'GENESIS')":"sha256(prev + event)"}</div>
+              </div>
+              {i<3 && <div style={{color:"#334155",fontSize:20,paddingLeft:4,paddingRight:4,flexShrink:0}}>→</div>}
+            </React.Fragment>
+          ))}
+          <div style={{marginLeft:10,flexShrink:0,background:"rgba(34,197,94,0.06)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:8,padding:"10px 14px",minWidth:140}}>
+            <div style={{color:"#22c55e",fontSize:10,fontWeight:700,marginBottom:6,textTransform:"uppercase"}}>Any Tamper?</div>
+            <div style={{color:"#9ca3af",fontSize:10}} className="mono">chain breaks at</div>
+            <div style={{color:"#9ca3af",fontSize:10}} className="mono">modification point</div>
+            <div style={{color:"#22c55e",fontSize:10,marginTop:4,fontWeight:600}}>→ detectable + provable</div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:10,overflow:"hidden"}}>
+        <div style={{padding:"12px 18px",borderBottom:"1px solid #1f2937",display:"flex",justifyContent:"space-between",alignItems:"center",background:"#0d1117"}}>
+          <div style={{color:"#e2e8f0",fontSize:13,fontWeight:600}}>Raw Audit Log (Append-Only)</div>
+          <span style={{color:"#374151",fontSize:12}}>Showing 8 of 1,247</span>
+        </div>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
+          <thead>
+            <tr style={{background:"#070f1a"}}>
+              {["#","Event ID","Timestamp","Agent","Tool","Decision","Chain Hash","Integrity"].map(h=>(
+                <th key={h} style={{textAlign:"left",color:"#374151",fontSize:10.5,fontWeight:700,padding:"9px 14px",textTransform:"uppercase",letterSpacing:0.6,whiteSpace:"nowrap"}}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {AUDIT_ROWS.map((r,i)=>(
+              <tr key={r.id} style={{borderTop:"1px solid #111827",background:i%2===0?"transparent":"rgba(255,255,255,0.01)"}}>
+                <td style={{padding:"9px 14px",color:"#374151",fontSize:12}} className="mono">{i+1}</td>
+                <td style={{padding:"9px 14px",color:"#93c5fd",fontSize:12}} className="mono">{r.id}</td>
+                <td style={{padding:"9px 14px",color:"#6b7280",fontSize:12}} className="mono">{r.ts}</td>
+                <td style={{padding:"9px 14px",color:"#e2e8f0",fontSize:12}}>{r.agent}</td>
+                <td style={{padding:"9px 14px",color:"#9ca3af",fontSize:12}} className="mono">{r.tool}</td>
+                <td style={{padding:"9px 14px"}}>
+                  <span style={{color:aC(r.action),fontSize:11,fontWeight:700}}>{r.action}</span>
+                </td>
+                <td style={{padding:"9px 14px",color:"#374151",fontSize:11}} className="mono">{r.chain}</td>
+                <td style={{padding:"9px 14px"}}><span style={{color:"#22c55e",fontSize:11,fontWeight:600}}>✓ VALID</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div style={{padding:"10px 18px",borderTop:"1px solid #1f2937",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{color:"#374151",fontSize:12,cursor:"pointer"}}>← Prev</span>
+          <span style={{color:"#4b5563",fontSize:12}}>Page 1 of 156 · No UPDATE/DELETE permissions on event records</span>
+          <span style={{color:"#14b8a6",fontSize:12,cursor:"pointer"}}>Next →</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Compliance ────────────────────────────────────────────────────────────────
+function Compliance() {
+  const [generating,setGenerating] = useState(false);
+  const [generated,setGenerated] = useState(false);
+  const [template,setTemplate] = useState("SOC2 CC6");
+
+  const generate=()=>{
+    setGenerating(true);
+    setGenerated(false);
+    setTimeout(()=>{setGenerating(false);setGenerated(true);},2200);
+  };
+
+  return (
+    <div style={{flex:1,overflow:"auto",padding:24}}>
+      <SectionHeader title="Compliance & Audit Export" subtitle="SOC2 CC6 · HIPAA §164.312 · ISO 27001 A.12.4 · One-click PDF audit reports mapped to compliance control IDs"/>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16,marginBottom:22}}>
+        {[
+          {std:"SOC2",controls:"CC6.1 · CC6.6 · CC6.7 · CC6.8",desc:"Logical & physical access controls · Change management · System operations monitoring",color:"#6366f1",icon:"🔐"},
+          {std:"HIPAA",controls:"§164.312(b)",desc:"Audit controls — record activity in systems containing PHI · Access and use of ePHI",color:"#0891b2",icon:"🏥"},
+          {std:"ISO 27001",controls:"A.12.4",desc:"Event logging and monitoring · Administrator logs · Clock synchronisation · Log protection",color:"#14b8a6",icon:"📋"},
+        ].map(c=>(
+          <div key={c.std} style={{background:"#111827",border:`1px solid ${c.color}28`,borderRadius:10,padding:18}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+              <span style={{fontSize:22}}>{c.icon}</span>
+              <div>
+                <div style={{color:c.color,fontSize:15,fontWeight:800}}>{c.std}</div>
+                <div style={{color:"#4b5563",fontSize:11}} className="mono">{c.controls}</div>
+              </div>
+            </div>
+            <p style={{color:"#9ca3af",fontSize:12,margin:"0 0 12px",lineHeight:1.6}}>{c.desc}</p>
+            <div style={{color:"#22c55e",fontSize:11,fontWeight:600}}>✓ AgentGuard events satisfy this control</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:10,padding:20,marginBottom:18}}>
+        <div style={{color:"#e2e8f0",fontSize:14,fontWeight:700,marginBottom:16}}>Generate Compliance Report</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 160px",gap:14,marginBottom:16}}>
+          <div>
+            <label style={{color:"#4b5563",fontSize:11,fontWeight:700,display:"block",marginBottom:6,textTransform:"uppercase",letterSpacing:0.8}}>Template</label>
+            <select value={template} onChange={e=>setTemplate(e.target.value)} style={{width:"100%",background:"#1e293b",border:"1px solid #334155",color:"#f1f5f9",borderRadius:8,padding:"9px 12px",fontSize:13}}>
+              <option>SOC2 CC6</option><option>HIPAA §164.312</option><option>ISO 27001 A.12.4</option><option>Full Report (Default)</option>
+            </select>
+          </div>
+          <div>
+            <label style={{color:"#4b5563",fontSize:11,fontWeight:700,display:"block",marginBottom:6,textTransform:"uppercase",letterSpacing:0.8}}>From</label>
+            <input type="date" defaultValue="2026-01-01" style={{width:"100%",background:"#1e293b",border:"1px solid #334155",color:"#f1f5f9",borderRadius:8,padding:"9px 12px",fontSize:13}}/>
+          </div>
+          <div>
+            <label style={{color:"#4b5563",fontSize:11,fontWeight:700,display:"block",marginBottom:6,textTransform:"uppercase",letterSpacing:0.8}}>To</label>
+            <input type="date" defaultValue="2026-04-08" style={{width:"100%",background:"#1e293b",border:"1px solid #334155",color:"#f1f5f9",borderRadius:8,padding:"9px 12px",fontSize:13}}/>
+          </div>
+          <div style={{display:"flex",alignItems:"flex-end"}}>
+            <button onClick={generate} disabled={generating} style={{width:"100%",background:generating?"rgba(20,184,166,0.04)":"linear-gradient(135deg,#0d9488,#0891b2)",border:"none",color:generating?"#4b5563":"white",borderRadius:8,padding:"10px 14px",fontSize:13,fontWeight:700,cursor:generating?"not-allowed":"pointer"}}>
+              {generating?"⟳ Generating...":"📥 Export PDF"}
+            </button>
+          </div>
+        </div>
+
+        {generated && (
+          <div className="slide-up" style={{background:"rgba(34,197,94,0.07)",border:"1px solid rgba(34,197,94,0.22)",borderRadius:8,padding:14,display:"flex",alignItems:"center",gap:14}}>
+            <span style={{fontSize:22,flexShrink:0}}>✅</span>
+            <div style={{flex:1}}>
+              <div style={{color:"#22c55e",fontSize:13,fontWeight:700}}>agentguard_audit_{template.replace(/ /g,"_")}_Q1-2026.pdf — 847 KB</div>
+              <div style={{color:"#6b7280",fontSize:12,marginTop:3}}>98 days · 1,247 events · 61 violations · 44 PII detections · Chain integrity: VALID · Generated in 2.1s</div>
+            </div>
+            <button style={{background:"rgba(34,197,94,0.13)",border:"1px solid rgba(34,197,94,0.28)",color:"#22c55e",borderRadius:7,padding:"7px 16px",fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0}}>⬇ Download</button>
+          </div>
+        )}
+      </div>
+
+      <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:10,padding:20}}>
+        <div style={{color:"#e2e8f0",fontSize:14,fontWeight:700,marginBottom:16}}>PDF Report — Contents Preview</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+          {[
+            {title:"Executive Summary",items:["Total events monitored (1,247)","Violations & blocks summary (61)","PII detection count (44)","Injection attempts caught (3)","Chain integrity status (VALID)"]},
+            {title:"Compliance Control Mapping",items:["SOC2 CC6.1 logical access evidence","SOC2 CC6.6 log access records","SOC2 CC6.8 monitoring evidence","Control requirement text & AgentGuard evidence location"]},
+            {title:"Violation Timeline",items:["Hourly violation chart (last 30 days)","Policy rule breakdown by ID","Top violating agent IDs","PII entity type distribution","Blocked call detail log"]},
+            {title:"Audit Log Table",items:["event_id, timestamp, action","agent_id, tool_name","policy_matched, pii_entities","chain_hash (first 8 chars shown)","Full event count: 1,247"]},
+          ].map(s=>(
+            <div key={s.title} style={{background:"#070f1a",borderRadius:8,padding:14}}>
+              <div style={{color:"#14b8a6",fontSize:12,fontWeight:700,marginBottom:10}}>{s.title}</div>
+              {s.items.map(item=>(
+                <div key={item} style={{display:"flex",alignItems:"flex-start",gap:7,marginBottom:6}}>
+                  <span style={{color:"#22c55e",fontSize:11,flexShrink:0,marginTop:1}}>✓</span>
+                  <span style={{color:"#6b7280",fontSize:12,lineHeight:1.4}}>{item}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── App Root ──────────────────────────────────────────────────────────────────
+function App() {
+  const [loggedIn,setLoggedIn] = useState(false);
+  const [role,setRole] = useState("");
+  const [screen,setScreen] = useState("live");
+  const [selectedEvent,setSelectedEvent] = useState(null);
+
+  if(!loggedIn) return <Login onLogin={r=>{setRole(r);setLoggedIn(true);}}/>;
+
+  return (
+    <div style={{display:"flex",height:"100vh",overflow:"hidden"}}>
+      <Sidebar active={screen} setActive={s=>{setScreen(s);setSelectedEvent(null);}} role={role}/>
+      <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"#060d1a"}}>
+        {screen==="live"       && <LiveFeed onEventClick={setSelectedEvent}/>}
+        {screen==="violations" && <Violations/>}
+        {screen==="health"     && <Health/>}
+        {screen==="policy"     && <Policy/>}
+        {screen==="audit"      && <AuditChain/>}
+        {screen==="compliance" && <Compliance/>}
+      </div>
+      {selectedEvent && <EventDetail ev={selectedEvent} onClose={()=>setSelectedEvent(null)}/>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
