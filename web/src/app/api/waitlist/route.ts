@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
 
       // 2. Send email notification
       getResend().emails.send({
-        from: "AgentGuard <notifications@stridemap.ai>",
+        from: "AgentGuard <onboarding@resend.dev>",
         to: "support@stridemap.ai",
         subject: `New waitlist signup: ${email}`,
         html: `
