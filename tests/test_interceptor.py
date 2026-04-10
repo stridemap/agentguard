@@ -230,21 +230,191 @@ class TestOnToolError:
 
 
 class TestFailOpen:
-    """Verify the interceptor never blocks tool calls due to its own errors."""
+    """Verify the interceptor NEVER blocks tool calls due to its own errors.
 
-    def test_on_tool_start_survives_bad_serialized(self, interceptor, run_id):
-        """Even with garbage serialized data, on_tool_start doesn't raise."""
+    These are adversarial tests that force internal failures via monkey-patching,
+    None injection, and broken state — then verify the interceptor swallows the
+    error and lets the tool call proceed.
+    """
+
+    def test_on_tool_start_survives_none_serialized(self, interceptor, run_id):
+        """on_tool_start with None serialized does not raise."""
         interceptor.on_tool_start(
             serialized=None,  # type: ignore[arg-type]
             input_str="test",
             run_id=run_id,
         )
-        # Should not raise — fail-open catches the AttributeError
+        # Must not raise — fail-open catches the TypeError/AttributeError
 
-    def test_on_tool_end_survives_internal_error(self, interceptor, run_id):
-        """on_tool_end with no matching start doesn't raise."""
+    def test_on_tool_start_survives_runtime_error_in_risk_detection(
+        self, interceptor, serialized_tool, run_id, caplog
+    ):
+        """Force RuntimeError inside _detect_input_risks → tool call proceeds."""
+        original = interceptor._detect_input_risks
+
+        def _boom(input_str):
+            raise RuntimeError("risk detection exploded")
+
+        interceptor._detect_input_risks = _boom
+
+        # This must NOT raise
+        interceptor.on_tool_start(
+            serialized=serialized_tool,
+            input_str="hello",
+            run_id=run_id,
+        )
+
+        # Verify warning was logged
+        assert any("fail-open" in record.message for record in caplog.records)
+
+        # Restore and verify tool_end still works (simulating tool proceeding)
+        interceptor._detect_input_risks = original
+        # Even though on_tool_start failed, on_tool_end with unknown run_id
+        # should not raise either
         interceptor.on_tool_end(output="result", run_id=run_id)
-        # Should not raise — logs warning and returns
+
+    def test_on_tool_start_survives_event_creation_crash(
+        self, interceptor, run_id, caplog, monkeypatch
+    ):
+        """Force AgentEvent constructor to raise → on_tool_start still returns."""
+        monkeypatch.setattr(
+            "agentguard.interceptor.AgentEvent",
+            type(
+                "BrokenEvent",
+                (),
+                {"compute_hash": lambda s: (_ for _ in ()).throw(RuntimeError("boom"))},
+            ),
+        )
+
+        interceptor.on_tool_start(
+            serialized={"name": "tool"},
+            input_str="data",
+            run_id=run_id,
+        )
+        # Must not raise
+        assert any("fail-open" in r.message for r in caplog.records)
+
+    def test_on_tool_end_survives_missing_start(self, interceptor, run_id):
+        """on_tool_end with no matching on_tool_start does not raise."""
+        interceptor.on_tool_end(output="orphan result", run_id=run_id)
+        # Must not raise — logs warning and returns
+        assert len(interceptor.completed_events) == 0
+
+    def test_on_tool_end_survives_finalize_crash(
+        self, interceptor, serialized_tool, run_id, caplog, monkeypatch
+    ):
+        """Force AgentEvent.finalize() to raise → on_tool_end still returns."""
+        interceptor.on_tool_start(
+            serialized=serialized_tool,
+            input_str="input",
+            run_id=run_id,
+        )
+
+        # Monkey-patch finalize on the class to explode
+        def _broken_finalize(self, **kw):
+            raise RuntimeError("finalize broke")
+
+        monkeypatch.setattr(AgentEvent, "finalize", _broken_finalize)
+
+        interceptor.on_tool_end(output="result", run_id=run_id)
+        # Must not raise
+        assert any("fail-open" in r.message for r in caplog.records)
+
+    def test_on_tool_error_survives_internal_failure(self, interceptor, run_id, caplog):
+        """on_tool_error with corrupted internal state does not raise."""
+        # Manually corrupt internal state
+        interceptor.events[run_id] = "not an event"  # type: ignore[assignment]
+
+        interceptor.on_tool_error(
+            error=ValueError("original tool error"),
+            run_id=run_id,
+        )
+        # Must not raise
+        assert any("fail-open" in r.message for r in caplog.records)
+
+    def test_on_tool_start_none_input_str(self, interceptor, serialized_tool, run_id):
+        """on_tool_start with None input_str does not raise."""
+        interceptor.on_tool_start(
+            serialized=serialized_tool,
+            input_str=None,  # type: ignore[arg-type]
+            run_id=run_id,
+        )
+        # Might fail inside compute_hash — fail-open catches it
+
+    def test_on_tool_end_non_string_output(self, interceptor, serialized_tool, run_id):
+        """on_tool_end with non-string output (dict) does not raise."""
+        interceptor.on_tool_start(
+            serialized=serialized_tool,
+            input_str="query",
+            run_id=run_id,
+        )
+        interceptor.on_tool_end(
+            output={"key": "value"},  # type: ignore[arg-type]
+            run_id=run_id,
+        )
+        # Must not raise — output is str()'d inside on_tool_end
+        events = interceptor.get_events()
+        assert len(events) == 1
+        assert "key" in events[0].output_str
+
+    def test_full_lifecycle_after_start_failure(self, interceptor, serialized_tool):
+        """Even if on_tool_start fails, the agent can make another call successfully."""
+        bad_id = uuid4()
+        good_id = uuid4()
+
+        # First call: force failure
+        interceptor.on_tool_start(
+            serialized=None,  # type: ignore[arg-type]
+            input_str="bad call",
+            run_id=bad_id,
+        )
+
+        # Second call: should work perfectly
+        invoke_tool(
+            interceptor,
+            serialized_tool,
+            "good input",
+            "good output",
+            good_id,
+        )
+
+        events = interceptor.get_events()
+        assert len(events) == 1
+        assert events[0].tool_name == "send_email"
+        assert events[0].output_str == "good output"
+
+    def test_hundred_calls_with_intermittent_failures(
+        self, interceptor, serialized_tool
+    ):
+        """100 tool calls where every 10th on_tool_start is sabotaged.
+
+        Verifies that failures don't corrupt state and subsequent calls succeed.
+        """
+        successful = 0
+        for i in range(100):
+            rid = uuid4()
+
+            if i % 10 == 0:
+                # Sabotage: pass None serialized to trigger fail-open
+                interceptor.on_tool_start(
+                    serialized=None,  # type: ignore[arg-type]
+                    input_str=f"input_{i}",
+                    run_id=rid,
+                )
+                # on_tool_end for a failed start should not raise
+                interceptor.on_tool_end(output=f"output_{i}", run_id=rid)
+            else:
+                invoke_tool(
+                    interceptor,
+                    serialized_tool,
+                    f"input_{i}",
+                    f"output_{i}",
+                    rid,
+                )
+                successful += 1
+
+        # All 90 non-sabotaged calls should produce events
+        assert interceptor.get_event_count() == successful
 
 
 # ── Risk auto-detection ──────────────────────────────────────────────
