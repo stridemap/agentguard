@@ -1,3 +1,382 @@
-"""LangGraph/LangChain BaseCallbackHandler interceptor for tool-call governance."""
+"""LangGraph/LangChain BaseCallbackHandler interceptor for tool-call governance.
+
+AgentGuardInterceptor sits between AI agents and their tools, capturing
+every tool call as a structured AgentEvent. It is designed with a
+fail-open guarantee: any exception inside the interceptor is caught
+and logged — the agent's tool call is NEVER blocked due to interceptor errors.
+
+Usage:
+    from agentguard import AgentGuardInterceptor
+
+    interceptor = AgentGuardInterceptor(agent_id="my-agent", session_id="sess-001")
+    config = {"callbacks": [interceptor]}
+    agent.invoke(input, config=config)
+"""
 
 from __future__ import annotations
+
+import logging
+import re
+import time
+from collections import deque
+from typing import Any
+from uuid import UUID
+
+from langchain_core.callbacks import BaseCallbackHandler
+
+from agentguard.models import AgentEvent, InterceptorConfig, RiskFlag
+
+logger = logging.getLogger("agentguard.interceptor")
+
+
+class AgentGuardInterceptor(BaseCallbackHandler):
+    """BaseCallbackHandler that intercepts tool calls for governance.
+
+    Captures pre-execution (on_tool_start) and post-execution (on_tool_end)
+    events, computing input/output hashes, latency, and risk flags.
+
+    Attributes:
+        config: Interceptor configuration (agent_id, session_id, thresholds).
+        events: Dict mapping run_id to in-flight AgentEvent instances.
+        completed_events: List of finalized events (append-only).
+    """
+
+    def __init__(
+        self,
+        agent_id: str = "default-agent",
+        session_id: str = "default-session",
+        config: InterceptorConfig | None = None,
+        **kwargs: Any,
+    ) -> None:
+        """Initialize the AgentGuard interceptor.
+
+        Args:
+            agent_id: Identifier for the agent being monitored.
+            session_id: Session identifier for event grouping.
+            config: Optional full configuration. If provided, agent_id and
+                session_id parameters are ignored in favor of config values.
+            **kwargs: Additional arguments passed to BaseCallbackHandler.
+        """
+        super().__init__(**kwargs)
+        if config is not None:
+            self.config = config
+        else:
+            self.config = InterceptorConfig(agent_id=agent_id, session_id=session_id)
+
+        self.events: dict[UUID, AgentEvent] = {}
+        self.completed_events: list[AgentEvent] = []
+        self._start_times: dict[UUID, float] = {}
+        self._call_timestamps: deque[float] = deque()
+
+    @property
+    def agent_id(self) -> str:
+        """Return the configured agent ID."""
+        return self.config.agent_id
+
+    @property
+    def session_id(self) -> str:
+        """Return the configured session ID."""
+        return self.config.session_id
+
+    def on_tool_start(
+        self,
+        serialized: dict[str, Any],
+        input_str: str,
+        *,
+        run_id: UUID,
+        parent_run_id: UUID | None = None,
+        tags: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
+        inputs: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        """Capture pre-execution event when a tool call begins.
+
+        Creates an AgentEvent with input metadata, computes the input hash,
+        and stores the start time for latency calculation.
+
+        This method is fail-open: any exception is caught and logged as a
+        WARNING — the tool call always proceeds.
+
+        Args:
+            serialized: Serialized tool definition from LangChain.
+            input_str: Raw input string passed to the tool.
+            run_id: Unique run ID for this tool invocation.
+            parent_run_id: Run ID of the parent (agent) invocation.
+            tags: Optional tags from LangChain.
+            metadata: Optional metadata from LangChain.
+            inputs: Optional structured inputs dict.
+            **kwargs: Additional callback arguments.
+        """
+        try:
+            tool_name = serialized.get("name", "")
+            if not tool_name:
+                id_field = serialized.get("id")
+                tool_name = (
+                    id_field[-1]
+                    if isinstance(id_field, list) and id_field
+                    else "unknown_tool"
+                )
+
+            event = AgentEvent(
+                agent_id=self.config.agent_id,
+                session_id=self.config.session_id,
+                tool_name=tool_name,
+                run_id=run_id,
+                parent_run_id=parent_run_id,
+                input_str=input_str,
+                input_hash=AgentEvent.compute_hash(input_str),
+            )
+
+            # Auto-flag risks on input
+            input_flags = self._detect_input_risks(input_str)
+            event.risk_flags.extend(input_flags)
+
+            self.events[run_id] = event
+            self._start_times[run_id] = time.perf_counter()
+
+            # Track call frequency
+            now = time.time()
+            self._call_timestamps.append(now)
+
+            logger.debug(
+                "on_tool_start: tool=%s run_id=%s agent=%s flags=%s",
+                tool_name,
+                run_id,
+                self.config.agent_id,
+                [f.value if hasattr(f, "value") else f for f in input_flags],
+            )
+
+        except Exception as e:
+            logger.warning(
+                "AgentGuard interceptor error in on_tool_start (fail-open): %s", e
+            )
+
+    def on_tool_end(
+        self,
+        output: str,
+        *,
+        run_id: UUID,
+        parent_run_id: UUID | None = None,
+        tags: list[str] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        """Capture post-execution event when a tool call completes.
+
+        Finalizes the AgentEvent with output data, computes latency, and
+        runs output risk detection.
+
+        This method is fail-open: any exception is caught and logged as a
+        WARNING — the result is always returned to the agent.
+
+        Args:
+            output: Raw output string returned by the tool.
+            run_id: Unique run ID matching the on_tool_start call.
+            parent_run_id: Run ID of the parent (agent) invocation.
+            tags: Optional tags from LangChain.
+            **kwargs: Additional callback arguments.
+        """
+        try:
+            output_text = str(output)
+
+            event = self.events.get(run_id)
+            if event is None:
+                logger.warning(
+                    "on_tool_end called for unknown run_id=%s (no matching on_tool_start)",
+                    run_id,
+                )
+                return
+
+            # Calculate latency
+            start_time = self._start_times.pop(run_id, None)
+            latency_ms = (
+                (time.perf_counter() - start_time) * 1000
+                if start_time is not None
+                else 0.0
+            )
+
+            # Finalize the event
+            event.finalize(output=output_text, latency_ms=latency_ms)
+
+            # Auto-flag risks on output
+            output_flags = self._detect_output_risks(output_text)
+            for flag in output_flags:
+                if flag not in event.risk_flags:
+                    event.risk_flags.append(flag)
+
+            # Check high-frequency
+            if (
+                self._is_high_frequency()
+                and RiskFlag.HIGH_FREQUENCY not in event.risk_flags
+            ):
+                event.risk_flags.append(RiskFlag.HIGH_FREQUENCY)
+
+            # If no policy module has evaluated yet, default to ALLOW
+            if event.policy_result == "PENDING":
+                event.policy_result = "ALLOW"
+
+            # Move from in-flight to completed
+            self.events.pop(run_id, None)
+            self.completed_events.append(event)
+
+            logger.debug(
+                "on_tool_end: tool=%s run_id=%s latency=%.1fms flags=%s policy=%s",
+                event.tool_name,
+                run_id,
+                latency_ms,
+                [f.value if hasattr(f, "value") else f for f in event.risk_flags],
+                event.policy_result,
+            )
+
+        except Exception as e:
+            logger.warning(
+                "AgentGuard interceptor error in on_tool_end (fail-open): %s", e
+            )
+
+    def on_tool_error(
+        self,
+        error: BaseException,
+        *,
+        run_id: UUID,
+        parent_run_id: UUID | None = None,
+        tags: list[str] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        """Handle tool execution errors gracefully.
+
+        Records the error in the event and moves it to completed_events
+        so the error is captured in the audit trail.
+
+        Args:
+            error: The exception raised by the tool.
+            run_id: Unique run ID matching the on_tool_start call.
+            parent_run_id: Run ID of the parent (agent) invocation.
+            tags: Optional tags from LangChain.
+            **kwargs: Additional callback arguments.
+        """
+        try:
+            event = self.events.pop(run_id, None)
+            if event is None:
+                return
+
+            start_time = self._start_times.pop(run_id, None)
+            latency_ms = (
+                (time.perf_counter() - start_time) * 1000
+                if start_time is not None
+                else 0.0
+            )
+
+            error_output = f"TOOL_ERROR: {type(error).__name__}: {error}"
+            event.finalize(output=error_output, latency_ms=latency_ms)
+            event.policy_result = "ALLOW"
+
+            self.completed_events.append(event)
+
+            logger.debug(
+                "on_tool_error: tool=%s run_id=%s error=%s",
+                event.tool_name,
+                run_id,
+                str(error)[:200],
+            )
+
+        except Exception as e:
+            logger.warning(
+                "AgentGuard interceptor error in on_tool_error (fail-open): %s", e
+            )
+
+    # ── Risk Detection ────────────────────────────────────────────────
+
+    def _detect_input_risks(self, input_str: str) -> list[RiskFlag]:
+        """Detect risk flags on tool input.
+
+        Args:
+            input_str: The raw input string to scan.
+
+        Returns:
+            List of detected risk flags.
+        """
+        flags: list[RiskFlag] = []
+
+        # Sensitive keywords
+        lower_input = input_str.lower()
+        if any(kw in lower_input for kw in self.config.sensitive_keywords):
+            flags.append(RiskFlag.SENSITIVE_KEYWORD)
+
+        # External domain detection (simple heuristic)
+        if re.search(r"https?://(?!.*internal\.)", input_str, re.IGNORECASE):
+            flags.append(RiskFlag.EXTERNAL_DOMAIN)
+
+        return flags
+
+    def _detect_output_risks(self, output_str: str) -> list[RiskFlag]:
+        """Detect risk flags on tool output.
+
+        Args:
+            output_str: The raw output string to scan.
+
+        Returns:
+            List of detected risk flags.
+        """
+        flags: list[RiskFlag] = []
+
+        # Large payload
+        if len(output_str.encode("utf-8")) > self.config.large_payload_threshold_bytes:
+            flags.append(RiskFlag.LARGE_PAYLOAD)
+
+        # Sensitive keywords
+        lower_output = output_str.lower()
+        if (
+            any(kw in lower_output for kw in self.config.sensitive_keywords)
+            and RiskFlag.SENSITIVE_KEYWORD not in flags
+        ):
+            flags.append(RiskFlag.SENSITIVE_KEYWORD)
+
+        # External domain
+        if (
+            re.search(r"https?://(?!.*internal\.)", output_str, re.IGNORECASE)
+            and RiskFlag.EXTERNAL_DOMAIN not in flags
+        ):
+            flags.append(RiskFlag.EXTERNAL_DOMAIN)
+
+        return flags
+
+    def _is_high_frequency(self) -> bool:
+        """Check if tool calls exceed the high-frequency threshold.
+
+        Returns:
+            True if the number of calls in the configured window exceeds
+            the threshold.
+        """
+        now = time.time()
+        cutoff = now - self.config.high_frequency_window_seconds
+
+        # Prune old timestamps
+        while self._call_timestamps and self._call_timestamps[0] < cutoff:
+            self._call_timestamps.popleft()
+
+        return len(self._call_timestamps) > self.config.high_frequency_threshold
+
+    # ── Public API ────────────────────────────────────────────────────
+
+    def get_events(self) -> list[AgentEvent]:
+        """Return a copy of all completed events.
+
+        Returns:
+            List of finalized AgentEvent instances.
+        """
+        return list(self.completed_events)
+
+    def get_event_count(self) -> int:
+        """Return the total number of completed events.
+
+        Returns:
+            Number of completed events.
+        """
+        return len(self.completed_events)
+
+    def clear_events(self) -> None:
+        """Clear all completed events.
+
+        Useful for testing or when events have been flushed to the event store.
+        """
+        self.completed_events.clear()
