@@ -25,6 +25,7 @@ from uuid import UUID
 
 from langchain_core.callbacks import BaseCallbackHandler
 
+from agentguard.event_store import EventQueue, EventStore
 from agentguard.logging import logger
 from agentguard.models import AgentEvent, InterceptorConfig, RiskFlag
 
@@ -49,6 +50,8 @@ class AgentGuardInterceptor(BaseCallbackHandler):
         agent_id: str = "default-agent",
         session_id: str = "default-session",
         config: InterceptorConfig | None = None,
+        event_queue: EventQueue | None = None,
+        db_path: str | None = None,
         **kwargs: Any,
     ) -> None:
         """Initialize the AgentGuard interceptor.
@@ -58,6 +61,11 @@ class AgentGuardInterceptor(BaseCallbackHandler):
             session_id: Session identifier for event grouping.
             config: Optional full configuration. If provided, agent_id and
                 session_id parameters are ignored in favor of config values.
+            event_queue: Optional pre-configured EventQueue for non-blocking
+                persistence. If None and db_path is provided, a queue+store
+                is auto-created and started.
+            db_path: Path to SQLite database. If provided without event_queue,
+                creates an EventStore + EventQueue automatically.
             **kwargs: Additional arguments passed to BaseCallbackHandler.
         """
         super().__init__(**kwargs)
@@ -71,6 +79,16 @@ class AgentGuardInterceptor(BaseCallbackHandler):
         self._start_times: dict[UUID, float] = {}
         self._call_timestamps: deque[float] = deque()
 
+        # Set up non-blocking event queue
+        if event_queue is not None:
+            self._event_queue = event_queue
+        elif db_path is not None:
+            store = EventStore(db_path=db_path)
+            self._event_queue = EventQueue(store=store)
+            self._event_queue.start()
+        else:
+            self._event_queue = None
+
     @property
     def agent_id(self) -> str:
         """Return the configured agent ID."""
@@ -80,6 +98,21 @@ class AgentGuardInterceptor(BaseCallbackHandler):
     def session_id(self) -> str:
         """Return the configured session ID."""
         return self.config.session_id
+
+    @property
+    def event_queue(self) -> EventQueue | None:
+        """Return the configured event queue, if any."""
+        return self._event_queue
+
+    def _enqueue_event(self, event: AgentEvent) -> None:
+        """Enqueue a completed event for non-blocking persistence.
+
+        If an event queue is configured, the event is put on the queue
+        and this method returns immediately (<5ms). If no queue is
+        configured, this is a no-op — events remain in completed_events.
+        """
+        if self._event_queue is not None:
+            self._event_queue.enqueue(event)
 
     def _log_event(self, event: AgentEvent, phase: str) -> None:
         """Emit a structured JSON log entry for an event.
@@ -251,6 +284,9 @@ class AgentGuardInterceptor(BaseCallbackHandler):
             self.events.pop(run_id, None)
             self.completed_events.append(event)
 
+            # Non-blocking enqueue for persistence
+            self._enqueue_event(event)
+
             # Structured JSON log
             self._log_event(event, "tool_end")
 
@@ -298,6 +334,9 @@ class AgentGuardInterceptor(BaseCallbackHandler):
             event.policy_result = "ALLOW"
 
             self.completed_events.append(event)
+
+            # Non-blocking enqueue for persistence
+            self._enqueue_event(event)
 
             # Structured JSON log
             self._log_event(event, "tool_error")
