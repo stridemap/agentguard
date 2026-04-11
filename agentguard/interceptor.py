@@ -5,6 +5,8 @@ every tool call as a structured AgentEvent. It is designed with a
 fail-open guarantee: any exception inside the interceptor is caught
 and logged — the agent's tool call is NEVER blocked due to interceptor errors.
 
+All logging uses Loguru structured JSON — no print() statements.
+
 Usage:
     from agentguard import AgentGuardInterceptor
 
@@ -15,7 +17,6 @@ Usage:
 
 from __future__ import annotations
 
-import logging
 import re
 import time
 from collections import deque
@@ -24,9 +25,8 @@ from uuid import UUID
 
 from langchain_core.callbacks import BaseCallbackHandler
 
+from agentguard.logging import logger
 from agentguard.models import AgentEvent, InterceptorConfig, RiskFlag
-
-logger = logging.getLogger("agentguard.interceptor")
 
 
 class AgentGuardInterceptor(BaseCallbackHandler):
@@ -34,6 +34,9 @@ class AgentGuardInterceptor(BaseCallbackHandler):
 
     Captures pre-execution (on_tool_start) and post-execution (on_tool_end)
     events, computing input/output hashes, latency, and risk flags.
+
+    All events are logged as structured JSON via Loguru with fields matching
+    the AgentEvent Pydantic schema.
 
     Attributes:
         config: Interceptor configuration (agent_id, session_id, thresholds).
@@ -77,6 +80,39 @@ class AgentGuardInterceptor(BaseCallbackHandler):
     def session_id(self) -> str:
         """Return the configured session ID."""
         return self.config.session_id
+
+    def _log_event(self, event: AgentEvent, phase: str) -> None:
+        """Emit a structured JSON log entry for an event.
+
+        Logs the full AgentEvent as structured key-value pairs so Loguru's
+        serialize=True produces machine-readable JSON output.
+
+        Args:
+            event: The AgentEvent to log.
+            phase: The lifecycle phase ("tool_start", "tool_end", "tool_error").
+        """
+        logger.bind(
+            phase=phase,
+            event_id=str(event.event_id),
+            timestamp=event.timestamp.isoformat(),
+            agent_id=event.agent_id,
+            session_id=event.session_id,
+            tool_name=event.tool_name,
+            run_id=str(event.run_id),
+            parent_run_id=str(event.parent_run_id) if event.parent_run_id else None,
+            input_hash=event.input_hash,
+            output_hash=event.output_hash,
+            latency_ms=event.latency_ms,
+            risk_flags=event.risk_flags,
+            policy_result=event.policy_result,
+            completed=event.completed,
+        ).info(
+            "agentguard.{phase} | tool={tool} agent={agent} policy={policy}",
+            phase=phase,
+            tool=event.tool_name,
+            agent=event.agent_id,
+            policy=event.policy_result,
+        )
 
     def on_tool_start(
         self,
@@ -139,17 +175,13 @@ class AgentGuardInterceptor(BaseCallbackHandler):
             now = time.time()
             self._call_timestamps.append(now)
 
-            logger.debug(
-                "on_tool_start: tool=%s run_id=%s agent=%s flags=%s",
-                tool_name,
-                run_id,
-                self.config.agent_id,
-                [f.value if hasattr(f, "value") else f for f in input_flags],
-            )
+            # Structured JSON log
+            self._log_event(event, "tool_start")
 
         except Exception as e:
-            logger.warning(
-                "AgentGuard interceptor error in on_tool_start (fail-open): %s", e
+            logger.opt(exception=True).warning(
+                "AgentGuard interceptor error in on_tool_start (fail-open): {error}",
+                error=str(e),
             )
 
     def on_tool_end(
@@ -182,8 +214,8 @@ class AgentGuardInterceptor(BaseCallbackHandler):
             event = self.events.get(run_id)
             if event is None:
                 logger.warning(
-                    "on_tool_end called for unknown run_id=%s (no matching on_tool_start)",
-                    run_id,
+                    "on_tool_end called for unknown run_id={run_id} (no matching on_tool_start)",
+                    run_id=str(run_id),
                 )
                 return
 
@@ -219,18 +251,13 @@ class AgentGuardInterceptor(BaseCallbackHandler):
             self.events.pop(run_id, None)
             self.completed_events.append(event)
 
-            logger.debug(
-                "on_tool_end: tool=%s run_id=%s latency=%.1fms flags=%s policy=%s",
-                event.tool_name,
-                run_id,
-                latency_ms,
-                [f.value if hasattr(f, "value") else f for f in event.risk_flags],
-                event.policy_result,
-            )
+            # Structured JSON log
+            self._log_event(event, "tool_end")
 
         except Exception as e:
-            logger.warning(
-                "AgentGuard interceptor error in on_tool_end (fail-open): %s", e
+            logger.opt(exception=True).warning(
+                "AgentGuard interceptor error in on_tool_end (fail-open): {error}",
+                error=str(e),
             )
 
     def on_tool_error(
@@ -272,16 +299,13 @@ class AgentGuardInterceptor(BaseCallbackHandler):
 
             self.completed_events.append(event)
 
-            logger.debug(
-                "on_tool_error: tool=%s run_id=%s error=%s",
-                event.tool_name,
-                run_id,
-                str(error)[:200],
-            )
+            # Structured JSON log
+            self._log_event(event, "tool_error")
 
         except Exception as e:
-            logger.warning(
-                "AgentGuard interceptor error in on_tool_error (fail-open): %s", e
+            logger.opt(exception=True).warning(
+                "AgentGuard interceptor error in on_tool_error (fail-open): {error}",
+                error=str(e),
             )
 
     # ── Risk Detection ────────────────────────────────────────────────

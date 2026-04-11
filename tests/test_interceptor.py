@@ -13,14 +13,25 @@ from __future__ import annotations
 
 import hashlib
 import time
+from io import StringIO
 from uuid import UUID, uuid4
 
 import pytest
+from loguru import logger
 
 from agentguard.interceptor import AgentGuardInterceptor
 from agentguard.models import AgentEvent, InterceptorConfig
 
 # ── Fixtures ──────────────────────────────────────────────────────────
+
+
+@pytest.fixture()
+def log_capture():
+    """Capture Loguru output for assertion in fail-open tests."""
+    buffer = StringIO()
+    handler_id = logger.add(buffer, format="{message}", level="WARNING")
+    yield buffer
+    logger.remove(handler_id)
 
 
 @pytest.fixture()
@@ -247,7 +258,7 @@ class TestFailOpen:
         # Must not raise — fail-open catches the TypeError/AttributeError
 
     def test_on_tool_start_survives_runtime_error_in_risk_detection(
-        self, interceptor, serialized_tool, run_id, caplog
+        self, interceptor, serialized_tool, run_id, log_capture
     ):
         """Force RuntimeError inside _detect_input_risks → tool call proceeds."""
         original = interceptor._detect_input_risks
@@ -265,7 +276,7 @@ class TestFailOpen:
         )
 
         # Verify warning was logged
-        assert any("fail-open" in record.message for record in caplog.records)
+        assert "fail-open" in log_capture.getvalue()
 
         # Restore and verify tool_end still works (simulating tool proceeding)
         interceptor._detect_input_risks = original
@@ -274,7 +285,7 @@ class TestFailOpen:
         interceptor.on_tool_end(output="result", run_id=run_id)
 
     def test_on_tool_start_survives_event_creation_crash(
-        self, interceptor, run_id, caplog, monkeypatch
+        self, interceptor, run_id, log_capture, monkeypatch
     ):
         """Force AgentEvent constructor to raise → on_tool_start still returns."""
         monkeypatch.setattr(
@@ -292,7 +303,7 @@ class TestFailOpen:
             run_id=run_id,
         )
         # Must not raise
-        assert any("fail-open" in r.message for r in caplog.records)
+        assert "fail-open" in log_capture.getvalue()
 
     def test_on_tool_end_survives_missing_start(self, interceptor, run_id):
         """on_tool_end with no matching on_tool_start does not raise."""
@@ -301,7 +312,7 @@ class TestFailOpen:
         assert len(interceptor.completed_events) == 0
 
     def test_on_tool_end_survives_finalize_crash(
-        self, interceptor, serialized_tool, run_id, caplog, monkeypatch
+        self, interceptor, serialized_tool, run_id, log_capture, monkeypatch
     ):
         """Force AgentEvent.finalize() to raise → on_tool_end still returns."""
         interceptor.on_tool_start(
@@ -318,9 +329,11 @@ class TestFailOpen:
 
         interceptor.on_tool_end(output="result", run_id=run_id)
         # Must not raise
-        assert any("fail-open" in r.message for r in caplog.records)
+        assert "fail-open" in log_capture.getvalue()
 
-    def test_on_tool_error_survives_internal_failure(self, interceptor, run_id, caplog):
+    def test_on_tool_error_survives_internal_failure(
+        self, interceptor, run_id, log_capture
+    ):
         """on_tool_error with corrupted internal state does not raise."""
         # Manually corrupt internal state
         interceptor.events[run_id] = "not an event"  # type: ignore[assignment]
@@ -330,7 +343,7 @@ class TestFailOpen:
             run_id=run_id,
         )
         # Must not raise
-        assert any("fail-open" in r.message for r in caplog.records)
+        assert "fail-open" in log_capture.getvalue()
 
     def test_on_tool_start_none_input_str(self, interceptor, serialized_tool, run_id):
         """on_tool_start with None input_str does not raise."""
