@@ -4,7 +4,9 @@ __version__ = "0.1.0"
 
 from agentguard.dlp_scanner import DLPConfig, DLPResult, DLPScanner
 from agentguard.event_store import EventQueue, EventStore
+from agentguard.injection_detector import InjectionDetector, InjectionResult
 from agentguard.interceptor import AgentGuardInterceptor
+from agentguard.llm_client import LLMClient, MockLLMClient, get_llm_client
 from agentguard.models import (
     AgentEvent,
     AlertSeverity,
@@ -23,10 +25,15 @@ __all__ = [
     "DLPScanner",
     "EventQueue",
     "EventStore",
+    "InjectionDetector",
+    "InjectionResult",
     "InterceptorConfig",
+    "LLMClient",
+    "MockLLMClient",
     "PolicyDecision",
     "PolicyEngine",
     "PolicyResult",
     "PolicyValidationError",
     "RiskFlag",
+    "get_llm_client",
 ]

@@ -27,6 +27,7 @@ from langchain_core.callbacks import BaseCallbackHandler
 
 from agentguard.dlp_scanner import DLPScanner
 from agentguard.event_store import EventQueue, EventStore
+from agentguard.injection_detector import InjectionDetector
 from agentguard.logging import logger
 from agentguard.models import AgentEvent, InterceptorConfig, RiskFlag
 from agentguard.policy_engine import PolicyEngine
@@ -56,6 +57,7 @@ class AgentGuardInterceptor(BaseCallbackHandler):
         db_path: str | None = None,
         policy_path: str | None = None,
         dlp_sensitivity: str | None = None,
+        injection_sensitivity: str | None = None,
         **kwargs: Any,
     ) -> None:
         """Initialize the AgentGuard interceptor.
@@ -108,6 +110,14 @@ class AgentGuardInterceptor(BaseCallbackHandler):
             self._dlp_scanner = DLPScanner(sensitivity=dlp_sensitivity)
         else:
             self._dlp_scanner = None
+
+        # Set up injection detector
+        if injection_sensitivity is not None:
+            self._injection_detector = InjectionDetector(
+                sensitivity=injection_sensitivity
+            )
+        else:
+            self._injection_detector = None
 
     @property
     def agent_id(self) -> str:
@@ -238,6 +248,17 @@ class AgentGuardInterceptor(BaseCallbackHandler):
                     and RiskFlag.PII_DETECTED not in event.risk_flags
                 ):
                     event.risk_flags.append(RiskFlag.PII_DETECTED)
+
+            # Injection scan on input (if detector configured)
+            if self._injection_detector is not None:
+                inj_result = self._injection_detector.scan(input_str)
+                if inj_result.status == "INJECTED":
+                    event.policy_result = "BLOCK"
+                elif (
+                    inj_result.status == "SUSPICIOUS"
+                    and event.policy_result == "PENDING"
+                ):
+                    event.policy_result = "ALERT"
 
             # Policy evaluation (if engine configured)
             if self._policy_engine is not None:

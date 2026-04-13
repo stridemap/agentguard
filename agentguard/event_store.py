@@ -24,10 +24,12 @@ Usage:
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import queue
 import sqlite3
 import threading
+import time
 from typing import Any
 
 from agentguard.logging import logger
@@ -59,8 +61,8 @@ _INSERT_EVENT_SQL = """
 INSERT OR IGNORE INTO events (
     event_id, timestamp, agent_id, session_id, tool_name,
     run_id, parent_run_id, input_hash, output_hash,
-    latency_ms, risk_flags, policy_result
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    latency_ms, risk_flags, policy_result, prev_hash, event_hash
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 
 
@@ -74,6 +76,8 @@ class EventStore:
         db_path: Path to the SQLite database file.
     """
 
+    _GENESIS_HASH = "0" * 64
+
     def __init__(self, db_path: str = "agentguard.db") -> None:
         """Initialize the event store and create the schema.
 
@@ -82,6 +86,8 @@ class EventStore:
         """
         self.db_path = db_path
         self._local = threading.local()
+        self._chain_lock = threading.Lock()
+        self._last_hash: str = self._GENESIS_HASH
         self._init_db()
 
     def _get_conn(self) -> sqlite3.Connection:
@@ -98,33 +104,65 @@ class EventStore:
         conn.execute(_CREATE_TABLE_SQL)
         conn.commit()
 
+    @staticmethod
+    def _compute_event_hash(event_data: dict, prev_hash: str) -> str:
+        """Compute SHA-256 hash for an event including the previous hash.
+
+        hash = SHA-256(json(event_fields, sort_keys=True) + prev_hash)
+        """
+        content = json.dumps(event_data, sort_keys=True) + prev_hash
+        return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
     def append(self, event: AgentEvent) -> None:
-        """Append a single event to the store.
+        """Append a single event to the store with cryptographic chaining.
+
+        Each event's hash includes the previous event's hash, forming
+        a tamper-evident chain. Any modification to any past event
+        breaks the chain from that point forward.
 
         This is the only write operation. No UPDATE or DELETE is allowed.
 
         Args:
             event: A finalized AgentEvent to persist.
         """
-        conn = self._get_conn()
-        conn.execute(
-            _INSERT_EVENT_SQL,
-            (
-                str(event.event_id),
-                event.timestamp.isoformat(),
-                event.agent_id,
-                event.session_id,
-                event.tool_name,
-                str(event.run_id),
-                str(event.parent_run_id) if event.parent_run_id else None,
-                event.input_hash,
-                event.output_hash,
-                event.latency_ms,
-                json.dumps(event.risk_flags),
-                event.policy_result,
-            ),
-        )
-        conn.commit()
+        with self._chain_lock:
+            event_data = {
+                "event_id": str(event.event_id),
+                "timestamp": event.timestamp.isoformat(),
+                "agent_id": event.agent_id,
+                "session_id": event.session_id,
+                "tool_name": event.tool_name,
+                "input_hash": event.input_hash,
+                "output_hash": event.output_hash,
+                "latency_ms": event.latency_ms,
+                "risk_flags": event.risk_flags,
+                "policy_result": event.policy_result,
+            }
+            prev_hash = self._last_hash
+            event_hash = self._compute_event_hash(event_data, prev_hash)
+
+            conn = self._get_conn()
+            conn.execute(
+                _INSERT_EVENT_SQL,
+                (
+                    str(event.event_id),
+                    event.timestamp.isoformat(),
+                    event.agent_id,
+                    event.session_id,
+                    event.tool_name,
+                    str(event.run_id),
+                    str(event.parent_run_id) if event.parent_run_id else None,
+                    event.input_hash,
+                    event.output_hash,
+                    event.latency_ms,
+                    json.dumps(event.risk_flags),
+                    event.policy_result,
+                    prev_hash,
+                    event_hash,
+                ),
+            )
+            conn.commit()
+            self._last_hash = event_hash
 
     def get_event_count(self) -> int:
         """Return the total number of events in the store."""
@@ -187,6 +225,57 @@ class EventStore:
                 "db_path": self.db_path,
                 "error": str(e),
             }
+
+    def verify_chain(self) -> dict[str, Any]:
+        """Verify the integrity of the cryptographic audit chain.
+
+        Iterates all events in insertion order, recomputes each event's
+        hash, and verifies it matches the stored hash. Any modification
+        to any past event breaks the chain at that point.
+
+        Returns:
+            Dict with is_valid, total_events, first_tampered_event_id,
+            and verification_latency_ms.
+        """
+        start = time.perf_counter()
+        conn = self._get_conn()
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("SELECT * FROM events ORDER BY rowid ASC").fetchall()
+
+        prev_hash = self._GENESIS_HASH
+        for row in rows:
+            event_data = {
+                "event_id": row["event_id"],
+                "timestamp": row["timestamp"],
+                "agent_id": row["agent_id"],
+                "session_id": row["session_id"],
+                "tool_name": row["tool_name"],
+                "input_hash": row["input_hash"],
+                "output_hash": row["output_hash"],
+                "latency_ms": row["latency_ms"],
+                "risk_flags": (
+                    json.loads(row["risk_flags"]) if row["risk_flags"] else []
+                ),
+                "policy_result": row["policy_result"],
+            }
+            expected_hash = self._compute_event_hash(event_data, prev_hash)
+
+            if row["event_hash"] != expected_hash:
+                return {
+                    "is_valid": False,
+                    "total_events": len(rows),
+                    "first_tampered_event_id": row["event_id"],
+                    "verification_latency_ms": (time.perf_counter() - start) * 1000,
+                }
+
+            prev_hash = row["event_hash"]
+
+        return {
+            "is_valid": True,
+            "total_events": len(rows),
+            "first_tampered_event_id": None,
+            "verification_latency_ms": (time.perf_counter() - start) * 1000,
+        }
 
     def close(self) -> None:
         """Close the thread-local database connection."""
