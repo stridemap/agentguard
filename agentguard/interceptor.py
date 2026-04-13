@@ -25,9 +25,11 @@ from uuid import UUID
 
 from langchain_core.callbacks import BaseCallbackHandler
 
+from agentguard.dlp_scanner import DLPScanner
 from agentguard.event_store import EventQueue, EventStore
 from agentguard.logging import logger
 from agentguard.models import AgentEvent, InterceptorConfig, RiskFlag
+from agentguard.policy_engine import PolicyEngine
 
 
 class AgentGuardInterceptor(BaseCallbackHandler):
@@ -52,6 +54,8 @@ class AgentGuardInterceptor(BaseCallbackHandler):
         config: InterceptorConfig | None = None,
         event_queue: EventQueue | None = None,
         db_path: str | None = None,
+        policy_path: str | None = None,
+        dlp_sensitivity: str | None = None,
         **kwargs: Any,
     ) -> None:
         """Initialize the AgentGuard interceptor.
@@ -66,6 +70,10 @@ class AgentGuardInterceptor(BaseCallbackHandler):
                 is auto-created and started.
             db_path: Path to SQLite database. If provided without event_queue,
                 creates an EventStore + EventQueue automatically.
+            policy_path: Path to YAML policy file. If provided, creates a
+                PolicyEngine and evaluates every tool call against the rules.
+            dlp_sensitivity: DLP scanning level (LOW | MEDIUM | HIGH).
+                If provided, creates a DLPScanner and scans inputs/outputs.
             **kwargs: Additional arguments passed to BaseCallbackHandler.
         """
         super().__init__(**kwargs)
@@ -89,6 +97,18 @@ class AgentGuardInterceptor(BaseCallbackHandler):
         else:
             self._event_queue = None
 
+        # Set up policy engine
+        if policy_path is not None:
+            self._policy_engine = PolicyEngine(policy_path)
+        else:
+            self._policy_engine = None
+
+        # Set up DLP scanner
+        if dlp_sensitivity is not None:
+            self._dlp_scanner = DLPScanner(sensitivity=dlp_sensitivity)
+        else:
+            self._dlp_scanner = None
+
     @property
     def agent_id(self) -> str:
         """Return the configured agent ID."""
@@ -98,6 +118,11 @@ class AgentGuardInterceptor(BaseCallbackHandler):
     def session_id(self) -> str:
         """Return the configured session ID."""
         return self.config.session_id
+
+    @property
+    def policy_engine(self) -> PolicyEngine | None:
+        """Return the configured policy engine, if any."""
+        return self._policy_engine
 
     @property
     def event_queue(self) -> EventQueue | None:
@@ -205,6 +230,20 @@ class AgentGuardInterceptor(BaseCallbackHandler):
             input_flags = self._detect_input_risks(input_str)
             event.risk_flags.extend(input_flags)
 
+            # DLP scan on input (if scanner configured)
+            if self._dlp_scanner is not None:
+                dlp_result = self._dlp_scanner.scan(input_str, direction="input")
+                if (
+                    dlp_result.entity_count > 0
+                    and RiskFlag.PII_DETECTED not in event.risk_flags
+                ):
+                    event.risk_flags.append(RiskFlag.PII_DETECTED)
+
+            # Policy evaluation (if engine configured)
+            if self._policy_engine is not None:
+                decision = self._policy_engine.evaluate(event)
+                event.policy_result = decision.result
+
             self.events[run_id] = event
             self._start_times[run_id] = time.perf_counter()
 
@@ -272,6 +311,15 @@ class AgentGuardInterceptor(BaseCallbackHandler):
             for flag in output_flags:
                 if flag not in event.risk_flags:
                     event.risk_flags.append(flag)
+
+            # DLP scan on output (if scanner configured)
+            if self._dlp_scanner is not None:
+                dlp_result = self._dlp_scanner.scan(output_text, direction="output")
+                if (
+                    dlp_result.entity_count > 0
+                    and RiskFlag.PII_DETECTED not in event.risk_flags
+                ):
+                    event.risk_flags.append(RiskFlag.PII_DETECTED)
 
             # Check high-frequency
             if (

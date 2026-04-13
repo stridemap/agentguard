@@ -1,0 +1,67 @@
+# AgentGuard Healthcare Policy — HIPAA Compliance Rules
+
+rules:
+  - id: block_phi_transmission
+    name: Block PHI Transmission
+    description: Block Protected Health Information from leaving the system (HIPAA)
+    priority: 5
+    conditions:
+      tool_name: "send_email|post_webhook|http_request"
+      destination_domain: "!internal.company.com"
+      data_pattern: "US_SSN"
+      direction: "output"
+      agent_id: null
+    action: BLOCK
+    alert_severity: CRITICAL
+
+  - id: block_medical_record_external
+    name: Block Medical Records External
+    description: Block medical license numbers in external communications
+    priority: 10
+    conditions:
+      tool_name: null
+      destination_domain: "!internal.company.com"
+      data_pattern: "MEDICAL_LICENSE"
+      direction: "output"
+      agent_id: null
+    action: BLOCK
+    alert_severity: CRITICAL
+
+  - id: alert_patient_data_access
+    name: Alert Patient Data Access
+    description: Alert when any agent accesses patient records
+    priority: 20
+    conditions:
+      tool_name: "read_patient_record|query_ehr|lookup_patient"
+      destination_domain: null
+      data_pattern: null
+      direction: "both"
+      agent_id: null
+    action: ALERT
+    alert_severity: HIGH
+
+  - id: block_dob_external
+    name: Block DOB External
+    description: Block date of birth data in external tool calls
+    priority: 15
+    conditions:
+      tool_name: "send_email|post_webhook"
+      destination_domain: "!internal.company.com"
+      data_pattern: null
+      direction: "output"
+      agent_id: null
+    action: ALERT
+    alert_severity: HIGH
+
+  - id: allow_billing_lookup
+    name: Allow Billing Lookup
+    description: Allow authorized billing lookups
+    priority: 90
+    conditions:
+      tool_name: "query_billing|check_insurance"
+      destination_domain: null
+      data_pattern: null
+      direction: "input"
+      agent_id: null
+    action: ALLOW
+    alert_severity: LOW

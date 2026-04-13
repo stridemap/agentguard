@@ -1,0 +1,133 @@
+# AgentGuard Default Policy — 10 Enterprise Baseline Rules
+# Applied to all environments. Override with industry-specific policies.
+
+rules:
+  - id: block_external_email_with_pii
+    name: Block External Email with PII
+    description: Block sending PII data to external email domains
+    priority: 10
+    conditions:
+      tool_name: "send_email"
+      destination_domain: "!internal.company.com"
+      data_pattern: "US_SSN"
+      direction: "output"
+      agent_id: null
+    action: BLOCK
+    alert_severity: CRITICAL
+
+  - id: block_ssn_exfiltration
+    name: Block SSN Exfiltration
+    description: Block any outbound tool call containing SSN data
+    priority: 15
+    conditions:
+      tool_name: null
+      destination_domain: null
+      data_pattern: "US_SSN"
+      direction: "output"
+      agent_id: null
+    action: BLOCK
+    alert_severity: CRITICAL
+
+  - id: block_credit_card_exfiltration
+    name: Block Credit Card Exfiltration
+    description: Block outbound tool calls containing credit card numbers
+    priority: 16
+    conditions:
+      tool_name: null
+      destination_domain: null
+      data_pattern: "CREDIT_CARD"
+      direction: "output"
+      agent_id: null
+    action: BLOCK
+    alert_severity: CRITICAL
+
+  - id: block_unauthorized_api
+    name: Block Unauthorized API
+    description: Block calls to APIs not in the approved allowlist
+    priority: 20
+    conditions:
+      tool_name: null
+      destination_domain: "!internal.company.com"
+      data_pattern: null
+      direction: "output"
+      agent_id: null
+    action: ALERT
+    alert_severity: HIGH
+
+  - id: block_unknown_destinations
+    name: Block Unknown Destinations
+    description: Block tool calls to unrecognized external domains
+    priority: 25
+    conditions:
+      tool_name: "send_email|post_webhook|http_request"
+      destination_domain: "!internal.company.com"
+      data_pattern: null
+      direction: "both"
+      agent_id: null
+    action: ALERT
+    alert_severity: MEDIUM
+
+  - id: alert_large_payload
+    name: Alert Large Payload
+    description: Alert when tool output exceeds 10KB
+    priority: 50
+    conditions:
+      tool_name: null
+      destination_domain: null
+      data_pattern: null
+      direction: "output"
+      agent_id: null
+    action: ALERT
+    alert_severity: MEDIUM
+
+  - id: alert_credential_keywords
+    name: Alert Credential Keywords
+    description: Alert on keywords like password, secret, token, api_key
+    priority: 55
+    conditions:
+      tool_name: null
+      destination_domain: null
+      data_pattern: null
+      direction: "both"
+      agent_id: null
+    action: ALERT
+    alert_severity: MEDIUM
+
+  - id: alert_high_frequency
+    name: Alert High Frequency
+    description: Alert when agent exceeds 10 tool calls per minute
+    priority: 60
+    conditions:
+      tool_name: null
+      destination_domain: null
+      data_pattern: null
+      direction: "both"
+      agent_id: null
+    action: ALERT
+    alert_severity: LOW
+
+  - id: allow_crm_lookup
+    name: Allow CRM Lookup
+    description: Allow CRM read operations for authorized agents
+    priority: 80
+    conditions:
+      tool_name: "query_crm|lookup_contact"
+      destination_domain: null
+      data_pattern: null
+      direction: "input"
+      agent_id: null
+    action: ALLOW
+    alert_severity: LOW
+
+  - id: allow_internal_tools
+    name: Allow Internal Tools
+    description: Allow all calls to internal/trusted tool endpoints
+    priority: 100
+    conditions:
+      tool_name: null
+      destination_domain: "internal.company.com"
+      data_pattern: null
+      direction: "both"
+      agent_id: null
+    action: ALLOW
+    alert_severity: LOW

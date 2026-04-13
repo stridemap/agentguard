@@ -1,0 +1,67 @@
+# AgentGuard Finance Policy — PCI-DSS / SOX Compliance Rules
+
+rules:
+  - id: block_card_data_external
+    name: Block Card Data to External
+    description: Block credit card numbers from leaving the network (PCI-DSS)
+    priority: 5
+    conditions:
+      tool_name: null
+      destination_domain: "!internal.company.com"
+      data_pattern: "CREDIT_CARD"
+      direction: "output"
+      agent_id: null
+    action: BLOCK
+    alert_severity: CRITICAL
+
+  - id: block_wire_transfer_unverified
+    name: Block Unverified Wire Transfer
+    description: Block wire transfer tool calls without compliance review
+    priority: 10
+    conditions:
+      tool_name: "initiate_wire|send_wire_transfer"
+      destination_domain: null
+      data_pattern: null
+      direction: "both"
+      agent_id: null
+    action: BLOCK
+    alert_severity: CRITICAL
+
+  - id: alert_large_transaction
+    name: Alert Large Transaction
+    description: Alert on any tool call mentioning amounts over $10,000
+    priority: 20
+    conditions:
+      tool_name: null
+      destination_domain: null
+      data_pattern: null
+      direction: "both"
+      agent_id: null
+    action: ALERT
+    alert_severity: HIGH
+
+  - id: block_account_number_external
+    name: Block Account Numbers External
+    description: Block full account numbers in external communications
+    priority: 15
+    conditions:
+      tool_name: "send_email|post_webhook"
+      destination_domain: "!internal.company.com"
+      data_pattern: null
+      direction: "output"
+      agent_id: null
+    action: ALERT
+    alert_severity: HIGH
+
+  - id: allow_balance_inquiry
+    name: Allow Balance Inquiry
+    description: Allow balance lookups for customer service agents
+    priority: 90
+    conditions:
+      tool_name: "query_balance|check_balance"
+      destination_domain: null
+      data_pattern: null
+      direction: "input"
+      agent_id: null
+    action: ALLOW
+    alert_severity: LOW
