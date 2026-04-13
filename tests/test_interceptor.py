@@ -434,107 +434,201 @@ class TestFailOpen:
 
 
 class TestRiskDetection:
-    """Tests for automatic risk flag detection."""
+    """Tests for all 5 automatic risk flag types."""
+
+    # ── sensitive_keyword ──────────────────────────────────────────
 
     def test_sensitive_keyword_in_input(self, interceptor, serialized_tool, run_id):
         invoke_tool(
-            interceptor,
-            serialized_tool,
-            "my password is hunter2",
-            "ok",
-            run_id,
+            interceptor, serialized_tool, "my password is hunter2", "ok", run_id
         )
-        event = interceptor.get_events()[0]
-        assert "sensitive_keyword" in event.risk_flags
+        assert "sensitive_keyword" in interceptor.get_events()[0].risk_flags
 
     def test_sensitive_keyword_in_output(self, interceptor, serialized_tool, run_id):
         invoke_tool(
-            interceptor,
-            serialized_tool,
-            "get config",
-            "api_key=sk-abc123",
-            run_id,
+            interceptor, serialized_tool, "get config", "api_key=sk-abc123", run_id
         )
-        event = interceptor.get_events()[0]
-        assert "sensitive_keyword" in event.risk_flags
+        assert "sensitive_keyword" in interceptor.get_events()[0].risk_flags
 
-    def test_external_domain_in_input(self, interceptor, serialized_tool, run_id):
+    def test_custom_sensitive_keywords(self):
+        cfg = InterceptorConfig(sensitive_keywords=["classified", "top_secret"])
+        i = AgentGuardInterceptor(config=cfg)
+        rid = uuid4()
+        invoke_tool(i, {"name": "t"}, "classified document", "ok", rid)
+        assert "sensitive_keyword" in i.get_events()[0].risk_flags
+
+    def test_sensitive_keyword_not_flagged_for_clean_text(
+        self, interceptor, serialized_tool, run_id
+    ):
+        invoke_tool(
+            interceptor, serialized_tool, "normal query", "normal response", run_id
+        )
+        assert "sensitive_keyword" not in interceptor.get_events()[0].risk_flags
+
+    # ── external_domain ────────────────────────────────────────────
+
+    def test_external_domain_in_input_no_allowlist(
+        self, interceptor, serialized_tool, run_id
+    ):
+        """No internal_domains configured — any URL is flagged."""
+        invoke_tool(
+            interceptor, serialized_tool, "fetch https://evil.com/data", "ok", run_id
+        )
+        assert "external_domain" in interceptor.get_events()[0].risk_flags
+
+    def test_external_domain_in_output(self, interceptor, serialized_tool, run_id):
         invoke_tool(
             interceptor,
             serialized_tool,
-            "fetch https://evil.com/data",
-            "ok",
+            "query",
+            "see https://external.io/leak",
             run_id,
         )
-        event = interceptor.get_events()[0]
-        assert "external_domain" in event.risk_flags
+        assert "external_domain" in interceptor.get_events()[0].risk_flags
 
-    def test_internal_domain_not_flagged(self, interceptor, serialized_tool, run_id):
+    def test_internal_domain_not_flagged_with_allowlist(self):
+        """URL matching internal_domains allowlist should NOT be flagged."""
+        cfg = InterceptorConfig(internal_domains=["company.com", "internal.corp"])
+        i = AgentGuardInterceptor(config=cfg)
+        rid = uuid4()
+        invoke_tool(i, {"name": "t"}, "fetch https://api.company.com/data", "ok", rid)
+        assert "external_domain" not in i.get_events()[0].risk_flags
+
+    def test_subdomain_matches_allowlist(self):
+        """Subdomains of allowlisted domains should also be allowed."""
+        cfg = InterceptorConfig(internal_domains=["company.com"])
+        i = AgentGuardInterceptor(config=cfg)
+        rid = uuid4()
         invoke_tool(
-            interceptor,
-            serialized_tool,
-            "fetch https://api.internal.company.com/data",
-            "ok",
-            run_id,
+            i, {"name": "t"}, "fetch https://api.us-east.company.com/v1", "ok", rid
         )
-        # internal domain should not be flagged — but our simple regex
-        # checks for "internal." in the URL which is present here
-        # This is a heuristic; the policy engine handles real allowlisting
+        assert "external_domain" not in i.get_events()[0].risk_flags
+
+    def test_external_domain_flagged_with_allowlist(self):
+        """URL NOT in allowlist should be flagged even when allowlist is set."""
+        cfg = InterceptorConfig(internal_domains=["company.com"])
+        i = AgentGuardInterceptor(config=cfg)
+        rid = uuid4()
+        invoke_tool(i, {"name": "t"}, "fetch https://evil.com/steal", "ok", rid)
+        assert "external_domain" in i.get_events()[0].risk_flags
+
+    def test_no_url_no_domain_flag(self, interceptor, serialized_tool, run_id):
+        """Text without URLs should not trigger external_domain."""
+        invoke_tool(
+            interceptor, serialized_tool, "plain text query", "plain response", run_id
+        )
+        assert "external_domain" not in interceptor.get_events()[0].risk_flags
+
+    # ── large_payload ──────────────────────────────────────────────
 
     def test_large_payload_flagged(self, interceptor, serialized_tool, run_id):
-        large_output = "x" * 20_000  # 20KB > 10KB threshold
-        invoke_tool(
-            interceptor,
-            serialized_tool,
-            "query",
-            large_output,
-            run_id,
-        )
-        event = interceptor.get_events()[0]
-        assert "large_payload" in event.risk_flags
+        invoke_tool(interceptor, serialized_tool, "query", "x" * 20_000, run_id)
+        assert "large_payload" in interceptor.get_events()[0].risk_flags
 
     def test_small_payload_not_flagged(self, interceptor, serialized_tool, run_id):
-        invoke_tool(
-            interceptor,
-            serialized_tool,
-            "query",
-            "small response",
-            run_id,
-        )
-        event = interceptor.get_events()[0]
-        assert "large_payload" not in event.risk_flags
+        invoke_tool(interceptor, serialized_tool, "query", "small", run_id)
+        assert "large_payload" not in interceptor.get_events()[0].risk_flags
+
+    def test_custom_payload_threshold(self):
+        cfg = InterceptorConfig(large_payload_threshold_bytes=50)
+        i = AgentGuardInterceptor(config=cfg)
+        rid = uuid4()
+        invoke_tool(i, {"name": "t"}, "q", "x" * 100, rid)
+        assert "large_payload" in i.get_events()[0].risk_flags
+
+    def test_payload_at_exact_threshold_not_flagged(self):
+        cfg = InterceptorConfig(large_payload_threshold_bytes=100)
+        i = AgentGuardInterceptor(config=cfg)
+        rid = uuid4()
+        invoke_tool(i, {"name": "t"}, "q", "x" * 100, rid)  # exactly 100 bytes
+        assert "large_payload" not in i.get_events()[0].risk_flags
+
+    # ── high_frequency ─────────────────────────────────────────────
 
     def test_high_frequency_flagged(self):
-        interceptor = AgentGuardInterceptor(
-            config=InterceptorConfig(
-                agent_id="test",
-                session_id="test",
-                high_frequency_threshold=3,
-                high_frequency_window_seconds=60,
-            )
+        cfg = InterceptorConfig(
+            high_frequency_threshold=3, high_frequency_window_seconds=60
         )
+        i = AgentGuardInterceptor(config=cfg)
         serialized = {"name": "tool"}
 
-        # Make 5 calls quickly — should trigger high_frequency after threshold
-        for i in range(5):
-            rid = uuid4()
-            invoke_tool(interceptor, serialized, f"call {i}", "ok", rid)
+        for j in range(5):
+            invoke_tool(i, serialized, f"call {j}", "ok", uuid4())
 
-        events = interceptor.get_events()
-        # At least one event should have high_frequency flag
-        flagged = [e for e in events if "high_frequency" in e.risk_flags]
+        flagged = [e for e in i.get_events() if "high_frequency" in e.risk_flags]
         assert len(flagged) > 0
+
+    def test_high_frequency_not_flagged_below_threshold(
+        self, interceptor, serialized_tool
+    ):
+        """Default threshold is 10 — 3 calls should not trigger."""
+        for j in range(3):
+            invoke_tool(interceptor, serialized_tool, f"call {j}", "ok", uuid4())
+
+        flagged = [
+            e for e in interceptor.get_events() if "high_frequency" in e.risk_flags
+        ]
+        assert len(flagged) == 0
+
+    # ── unknown_tool ───────────────────────────────────────────────
+
+    def test_unknown_tool_flagged(self):
+        """Tool not in known_tools allowlist should be flagged."""
+        cfg = InterceptorConfig(known_tools=["send_email", "query_db"])
+        i = AgentGuardInterceptor(config=cfg)
+        rid = uuid4()
+        invoke_tool(i, {"name": "evil_tool"}, "payload", "ok", rid)
+        assert "unknown_tool" in i.get_events()[0].risk_flags
+
+    def test_known_tool_not_flagged(self):
+        """Tool in known_tools allowlist should NOT be flagged."""
+        cfg = InterceptorConfig(known_tools=["send_email", "query_db"])
+        i = AgentGuardInterceptor(config=cfg)
+        rid = uuid4()
+        invoke_tool(i, {"name": "send_email"}, "hello", "sent", rid)
+        assert "unknown_tool" not in i.get_events()[0].risk_flags
+
+    def test_unknown_tool_disabled_when_list_empty(
+        self, interceptor, serialized_tool, run_id
+    ):
+        """Empty known_tools = detection disabled — no tool is flagged."""
+        invoke_tool(interceptor, serialized_tool, "in", "out", run_id)
+        assert "unknown_tool" not in interceptor.get_events()[0].risk_flags
+
+    # ── clean input (no flags) ─────────────────────────────────────
 
     def test_clean_input_no_flags(self, interceptor, serialized_tool, run_id):
         invoke_tool(
             interceptor,
             serialized_tool,
-            "What is the weather today?",
-            "It is sunny and 72F.",
+            "What is the weather?",
+            "Sunny and 72F.",
             run_id,
         )
-        event = interceptor.get_events()[0]
-        assert event.risk_flags == []
+        assert interceptor.get_events()[0].risk_flags == []
+
+    # ── multiple flags on single event ─────────────────────────────
+
+    def test_multiple_flags_on_single_event(self):
+        """An event can accumulate multiple risk flags."""
+        cfg = InterceptorConfig(
+            known_tools=["safe_tool"],
+            sensitive_keywords=["secret"],
+        )
+        i = AgentGuardInterceptor(config=cfg)
+        rid = uuid4()
+        invoke_tool(
+            i,
+            {"name": "bad_tool"},
+            "secret https://evil.com/exfil",
+            "x" * 20_000,
+            rid,
+        )
+        flags = i.get_events()[0].risk_flags
+        assert "unknown_tool" in flags
+        assert "sensitive_keyword" in flags
+        assert "external_domain" in flags
+        assert "large_payload" in flags
 
 
 # ── Event counting and management ────────────────────────────────────

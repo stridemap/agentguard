@@ -31,6 +31,7 @@ class RiskFlag(StrEnum):
     LARGE_PAYLOAD = "large_payload"
     SENSITIVE_KEYWORD = "sensitive_keyword"
     HIGH_FREQUENCY = "high_frequency"
+    UNKNOWN_TOOL = "unknown_tool"
     PII_DETECTED = "pii_detected"
 
 
@@ -154,4 +155,16 @@ class InterceptorConfig(BaseModel):
             "credential",
         ],
         description="Keywords that trigger sensitive_keyword risk flag when found in input or output",
+    )
+    internal_domains: list[str] = Field(
+        default_factory=list,
+        description="Domain allowlist for internal/trusted endpoints. "
+        "URLs matching these domains are NOT flagged as external_domain. "
+        "Empty list = all external URLs are flagged.",
+    )
+    known_tools: list[str] = Field(
+        default_factory=list,
+        description="Allowlist of known-good tool names. "
+        "Tools not in this list are flagged as unknown_tool. "
+        "Empty list = unknown_tool detection disabled.",
     )

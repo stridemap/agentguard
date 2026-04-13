@@ -197,6 +197,10 @@ class AgentGuardInterceptor(BaseCallbackHandler):
                 input_hash=AgentEvent.compute_hash(input_str),
             )
 
+            # Check unknown tool
+            if self._is_unknown_tool(tool_name):
+                event.risk_flags.append(RiskFlag.UNKNOWN_TOOL)
+
             # Auto-flag risks on input
             input_flags = self._detect_input_risks(input_str)
             event.risk_flags.extend(input_flags)
@@ -352,6 +356,8 @@ class AgentGuardInterceptor(BaseCallbackHandler):
     def _detect_input_risks(self, input_str: str) -> list[RiskFlag]:
         """Detect risk flags on tool input.
 
+        Checks for sensitive keywords and external domains.
+
         Args:
             input_str: The raw input string to scan.
 
@@ -365,14 +371,16 @@ class AgentGuardInterceptor(BaseCallbackHandler):
         if any(kw in lower_input for kw in self.config.sensitive_keywords):
             flags.append(RiskFlag.SENSITIVE_KEYWORD)
 
-        # External domain detection (simple heuristic)
-        if re.search(r"https?://(?!.*internal\.)", input_str, re.IGNORECASE):
+        # External domain (not in internal allowlist)
+        if self._has_external_domain(input_str):
             flags.append(RiskFlag.EXTERNAL_DOMAIN)
 
         return flags
 
     def _detect_output_risks(self, output_str: str) -> list[RiskFlag]:
         """Detect risk flags on tool output.
+
+        Checks for large payloads, sensitive keywords, and external domains.
 
         Args:
             output_str: The raw output string to scan.
@@ -382,7 +390,7 @@ class AgentGuardInterceptor(BaseCallbackHandler):
         """
         flags: list[RiskFlag] = []
 
-        # Large payload
+        # Large payload (output > threshold)
         if len(output_str.encode("utf-8")) > self.config.large_payload_threshold_bytes:
             flags.append(RiskFlag.LARGE_PAYLOAD)
 
@@ -394,21 +402,70 @@ class AgentGuardInterceptor(BaseCallbackHandler):
         ):
             flags.append(RiskFlag.SENSITIVE_KEYWORD)
 
-        # External domain
+        # External domain (not in internal allowlist)
         if (
-            re.search(r"https?://(?!.*internal\.)", output_str, re.IGNORECASE)
+            self._has_external_domain(output_str)
             and RiskFlag.EXTERNAL_DOMAIN not in flags
         ):
             flags.append(RiskFlag.EXTERNAL_DOMAIN)
 
         return flags
 
+    def _has_external_domain(self, text: str) -> bool:
+        """Check if text contains URLs pointing to non-internal domains.
+
+        If internal_domains is configured, a URL is external only if its
+        domain does not match any entry in the allowlist. If internal_domains
+        is empty, any URL is considered external.
+
+        Args:
+            text: The text to scan for URLs.
+
+        Returns:
+            True if at least one external domain URL is found.
+        """
+        urls = re.findall(r"https?://([^\s/\"'<>]+)", text, re.IGNORECASE)
+        if not urls:
+            return False
+
+        allowlist = self.config.internal_domains
+        if not allowlist:
+            # No allowlist configured — any URL is external
+            return True
+
+        for domain in urls:
+            domain_lower = domain.lower()
+            if not any(
+                domain_lower == d or domain_lower.endswith("." + d) for d in allowlist
+            ):
+                return True
+
+        return False
+
+    def _is_unknown_tool(self, tool_name: str) -> bool:
+        """Check if a tool is not in the known-good allowlist.
+
+        If known_tools is empty, unknown_tool detection is disabled
+        (returns False for all tools).
+
+        Args:
+            tool_name: Name of the tool to check.
+
+        Returns:
+            True if the tool is not in the known-good list.
+        """
+        if not self.config.known_tools:
+            return False
+        return tool_name not in self.config.known_tools
+
     def _is_high_frequency(self) -> bool:
         """Check if tool calls exceed the high-frequency threshold.
 
+        Counts calls within the configured time window and compares
+        against the threshold.
+
         Returns:
-            True if the number of calls in the configured window exceeds
-            the threshold.
+            True if the number of calls in the window exceeds the threshold.
         """
         now = time.time()
         cutoff = now - self.config.high_frequency_window_seconds
