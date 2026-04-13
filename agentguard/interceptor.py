@@ -500,3 +500,59 @@ class AgentGuardInterceptor(BaseCallbackHandler):
         Useful for testing or when events have been flushed to the event store.
         """
         self.completed_events.clear()
+
+    def health_check(self) -> dict[str, Any]:
+        """Return JSON-serializable health status for monitoring.
+
+        Designed for load balancers and monitoring systems. Returns
+        the current state of the interceptor, event queue, and store.
+
+        Returns:
+            Dict with keys: status, version, agent_id, session_id,
+            db_connection, queue_depth, events_written, events_dropped,
+            events_in_memory, events_per_second.
+        """
+        from agentguard import __version__
+
+        health: dict[str, Any] = {
+            "status": "healthy",
+            "version": __version__,
+            "agent_id": self.config.agent_id,
+            "session_id": self.config.session_id,
+            "events_in_memory": len(self.completed_events),
+            "inflight_events": len(self.events),
+        }
+
+        # Queue metrics
+        if self._event_queue is not None:
+            health["queue_depth"] = self._event_queue.queue_depth
+            health["events_written"] = self._event_queue.events_written
+            health["events_dropped"] = self._event_queue.events_dropped
+
+            # Events per second (rolling window from call timestamps)
+            now = time.time()
+            cutoff = now - 60
+            recent = sum(1 for ts in self._call_timestamps if ts >= cutoff)
+            elapsed = (
+                min(60.0, now - self._call_timestamps[0])
+                if self._call_timestamps
+                else 60.0
+            )
+            health["events_per_second"] = round(recent / max(elapsed, 0.001), 2)
+
+            # DB connection status from store
+            try:
+                store_health = self._event_queue.store.health_check()
+                health["db_connection"] = store_health.get("status", "unknown")
+                health["db_event_count"] = store_health.get("event_count", 0)
+            except Exception:
+                health["db_connection"] = "unhealthy"
+                health["status"] = "degraded"
+        else:
+            health["queue_depth"] = 0
+            health["events_written"] = 0
+            health["events_dropped"] = 0
+            health["events_per_second"] = 0.0
+            health["db_connection"] = "not_configured"
+
+        return health

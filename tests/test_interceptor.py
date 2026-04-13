@@ -958,3 +958,115 @@ class TestMockLlmFixture:
         assert interceptor.get_event_count() == 1
         # mock_llm is available but interceptor doesn't use it yet
         assert mock_llm.classify("test") == "CLEAN"
+
+
+# ── Health check endpoint ────────────────────────────────────────────
+
+
+class TestHealthCheck:
+    """Tests for the GET /health JSON status endpoint."""
+
+    def test_health_check_without_queue(self):
+        """Health check with no queue returns base fields."""
+        interceptor = AgentGuardInterceptor(agent_id="health-test", session_id="sess-1")
+        health = interceptor.health_check()
+
+        assert health["status"] == "healthy"
+        assert health["version"] == "0.1.0"
+        assert health["agent_id"] == "health-test"
+        assert health["session_id"] == "sess-1"
+        assert health["events_in_memory"] == 0
+        assert health["inflight_events"] == 0
+        assert health["queue_depth"] == 0
+        assert health["events_written"] == 0
+        assert health["events_dropped"] == 0
+        assert health["events_per_second"] == 0.0
+        assert health["db_connection"] == "not_configured"
+
+    def test_health_check_with_queue(self, tmp_path):
+        """Health check with active queue reports DB and queue state."""
+        db_path = str(tmp_path / "health.db")
+        interceptor = AgentGuardInterceptor(
+            agent_id="h-agent", session_id="h-sess", db_path=db_path
+        )
+
+        # Send a few events
+        for i in range(5):
+            rid = uuid4()
+            invoke_tool(interceptor, {"name": "tool"}, f"in_{i}", f"out_{i}", rid)
+
+        time.sleep(0.3)
+
+        health = interceptor.health_check()
+
+        assert health["status"] == "healthy"
+        assert health["db_connection"] == "healthy"
+        assert health["events_in_memory"] == 5
+        assert health["events_written"] == 5
+        assert health["events_dropped"] == 0
+        assert health["queue_depth"] == 0
+        assert health["db_event_count"] == 5
+        assert isinstance(health["events_per_second"], float)
+
+        interceptor.event_queue.stop()
+
+    def test_health_check_after_events(self):
+        """Health check reflects in-memory event count."""
+        interceptor = AgentGuardInterceptor()
+        invoke_tool(interceptor, {"name": "t"}, "in", "out", uuid4())
+        invoke_tool(interceptor, {"name": "t"}, "in", "out", uuid4())
+
+        health = interceptor.health_check()
+        assert health["events_in_memory"] == 2
+
+    def test_health_check_during_inflight(self):
+        """Health check reports inflight events (started but not ended)."""
+        interceptor = AgentGuardInterceptor()
+        rid = uuid4()
+        interceptor.on_tool_start(
+            serialized={"name": "slow"}, input_str="x", run_id=rid
+        )
+
+        health = interceptor.health_check()
+        assert health["inflight_events"] == 1
+        assert health["events_in_memory"] == 0
+
+        interceptor.on_tool_end(output="done", run_id=rid)
+
+        health = interceptor.health_check()
+        assert health["inflight_events"] == 0
+        assert health["events_in_memory"] == 1
+
+    def test_health_check_json_serializable(self, tmp_path):
+        """Health check output must be JSON-serializable for HTTP responses."""
+        import json
+
+        db_path = str(tmp_path / "json_test.db")
+        interceptor = AgentGuardInterceptor(db_path=db_path)
+        invoke_tool(interceptor, {"name": "t"}, "in", "out", uuid4())
+        time.sleep(0.2)
+
+        health = interceptor.health_check()
+        serialized = json.dumps(health)
+        parsed = json.loads(serialized)
+
+        assert parsed["status"] == "healthy"
+        assert isinstance(parsed["version"], str)
+        assert isinstance(parsed["events_per_second"], float)
+
+        interceptor.event_queue.stop()
+
+    def test_health_check_returns_all_required_fields(self):
+        """Verify all fields specified in the Sprint 2 requirement exist."""
+        interceptor = AgentGuardInterceptor()
+        health = interceptor.health_check()
+
+        required_fields = [
+            "status",
+            "version",
+            "db_connection",
+            "queue_depth",
+            "events_per_second",
+        ]
+        for field in required_fields:
+            assert field in health, f"Missing required field: {field}"
