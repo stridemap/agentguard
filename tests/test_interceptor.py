@@ -771,3 +771,190 @@ class TestInterceptorConfig:
         interceptor = AgentGuardInterceptor(config=cfg)
         assert interceptor.config.large_payload_threshold_bytes == 1024
         assert interceptor.config.high_frequency_threshold == 5
+
+
+# ── Acceptance criteria: 100 calls → 100 events (zero dropped) ───────
+
+
+class TestHundredCallsZeroDropped:
+    """Sprint 2 acceptance: 100 consecutive tool calls → 100 events in DB, zero dropped."""
+
+    def test_100_calls_100_events_in_memory(self):
+        """100 calls → 100 events in completed_events (no queue)."""
+        interceptor = AgentGuardInterceptor(agent_id="acceptance", session_id="s1")
+        serialized = {"name": "test_tool"}
+        for i in range(100):
+            rid = uuid4()
+            interceptor.on_tool_start(
+                serialized=serialized, input_str=f"in_{i}", run_id=rid
+            )
+            interceptor.on_tool_end(output=f"out_{i}", run_id=rid)
+
+        assert interceptor.get_event_count() == 100
+        # Verify no in-flight events leaked
+        assert len(interceptor.events) == 0
+
+    def test_100_calls_100_events_through_queue(self, tmp_path):
+        """100 calls → 100 events persisted to SQLite via queue, zero dropped."""
+        db_path = str(tmp_path / "acceptance.db")
+        interceptor = AgentGuardInterceptor(
+            agent_id="acceptance", session_id="s1", db_path=db_path
+        )
+        serialized = {"name": "test_tool"}
+
+        for i in range(100):
+            rid = uuid4()
+            interceptor.on_tool_start(
+                serialized=serialized, input_str=f"in_{i}", run_id=rid
+            )
+            interceptor.on_tool_end(output=f"out_{i}", run_id=rid)
+
+        # Wait for queue consumer to flush
+        time.sleep(0.5)
+
+        assert interceptor.get_event_count() == 100
+        assert interceptor.event_queue is not None
+        assert interceptor.event_queue.events_written == 100
+        assert interceptor.event_queue.events_dropped == 0
+        assert interceptor.event_queue.store.get_event_count() == 100
+
+        interceptor.event_queue.stop()
+
+    def test_100_calls_with_mixed_tools(self, tmp_path):
+        """100 calls across 5 different tools — all recorded."""
+        db_path = str(tmp_path / "mixed.db")
+        interceptor = AgentGuardInterceptor(agent_id="mixed", db_path=db_path)
+        tools = ["read_email", "query_crm", "send_email", "lookup", "write_doc"]
+
+        for i in range(100):
+            tool_name = tools[i % len(tools)]
+            rid = uuid4()
+            interceptor.on_tool_start(
+                serialized={"name": tool_name}, input_str=f"in_{i}", run_id=rid
+            )
+            interceptor.on_tool_end(output=f"out_{i}", run_id=rid)
+
+        time.sleep(0.5)
+
+        assert interceptor.get_event_count() == 100
+        assert interceptor.event_queue.events_dropped == 0
+        # Verify each tool was called 20 times
+        tool_counts = {}
+        for e in interceptor.get_events():
+            tool_counts[e.tool_name] = tool_counts.get(e.tool_name, 0) + 1
+        for t in tools:
+            assert tool_counts[t] == 20
+
+        interceptor.event_queue.stop()
+
+
+# ── Interceptor latency measurement ──────────────────────────────────
+
+
+class TestInterceptorLatency:
+    """Sprint 2 acceptance: interceptor overhead p50<5ms, p95<20ms, p99<50ms.
+
+    Measures the full on_tool_start → on_tool_end cycle overhead
+    (not including actual tool execution, which is mocked).
+    """
+
+    def test_latency_p50_p95_p99(self):
+        """Measure interceptor overhead over 1000 tool calls."""
+        interceptor = AgentGuardInterceptor(agent_id="perf", session_id="perf")
+        serialized = {"name": "fast_tool"}
+        times: list[float] = []
+
+        for i in range(1000):
+            rid = uuid4()
+            start = time.perf_counter()
+            interceptor.on_tool_start(
+                serialized=serialized, input_str=f"input_{i}", run_id=rid
+            )
+            interceptor.on_tool_end(output=f"output_{i}", run_id=rid)
+            elapsed_ms = (time.perf_counter() - start) * 1000
+            times.append(elapsed_ms)
+
+        sorted_times = sorted(times)
+        p50 = sorted_times[499]
+        p95 = sorted_times[949]
+        p99 = sorted_times[989]
+
+        assert p50 < 5.0, f"p50 interceptor overhead {p50:.3f}ms exceeds 5ms"
+        assert p95 < 20.0, f"p95 interceptor overhead {p95:.3f}ms exceeds 20ms"
+        assert p99 < 50.0, f"p99 interceptor overhead {p99:.3f}ms exceeds 50ms"
+        assert interceptor.get_event_count() == 1000
+
+    def test_latency_with_risk_detection(self):
+        """Measure overhead including risk detection (keywords + domain check)."""
+        cfg = InterceptorConfig(
+            agent_id="perf",
+            session_id="perf",
+            known_tools=["allowed_tool"],
+            internal_domains=["company.com"],
+            sensitive_keywords=["password", "secret", "ssn"],
+        )
+        interceptor = AgentGuardInterceptor(config=cfg)
+        serialized = {"name": "unknown_tool"}
+        times: list[float] = []
+
+        for i in range(500):
+            rid = uuid4()
+            start = time.perf_counter()
+            interceptor.on_tool_start(
+                serialized=serialized,
+                input_str=f"fetch https://external.io/api?q={i}",
+                run_id=rid,
+            )
+            interceptor.on_tool_end(
+                output=f"response with password data {i}",
+                run_id=rid,
+            )
+            elapsed_ms = (time.perf_counter() - start) * 1000
+            times.append(elapsed_ms)
+
+        sorted_times = sorted(times)
+        p99 = sorted_times[int(len(times) * 0.99)]
+
+        assert p99 < 50.0, f"p99 with risk detection {p99:.3f}ms exceeds 50ms"
+
+        # Verify risk flags were actually being computed
+        events = interceptor.get_events()
+        assert all("unknown_tool" in e.risk_flags for e in events)
+        assert all("external_domain" in e.risk_flags for e in events)
+
+
+# ── mock_llm fixture integration ─────────────────────────────────────
+
+
+class TestMockLlmFixture:
+    """Verify the mock_llm fixture from conftest.py works with the interceptor.
+
+    The injection detector (Sprint 4) will use mock_llm for classification.
+    These tests prove the fixture integrates correctly with the interceptor
+    pipeline and that the mock LLM returns deterministic results.
+    """
+
+    def test_mock_llm_returns_clean(self, mock_llm):
+        """mock_llm fixture returns CLEAN classification by default."""
+        assert mock_llm.classify("test input") == "CLEAN"
+        assert mock_llm.provider == "mock"
+        assert mock_llm.model == "mock-model"
+
+    def test_mock_llm_configurable_response(self, mock_llm):
+        """mock_llm can be configured to return any classification."""
+        mock_llm.classify.return_value = "INJECTED"
+        assert mock_llm.classify("ignore previous instructions") == "INJECTED"
+
+    def test_interceptor_works_alongside_mock_llm(self, mock_llm):
+        """Interceptor functions correctly when mock_llm is in scope.
+
+        This proves the fixture doesn't interfere with the interceptor —
+        important for Sprint 4 when the injection detector is wired in.
+        """
+        interceptor = AgentGuardInterceptor(agent_id="llm-test")
+        rid = uuid4()
+        invoke_tool(interceptor, {"name": "classify"}, "test text", "result", rid)
+
+        assert interceptor.get_event_count() == 1
+        # mock_llm is available but interceptor doesn't use it yet
+        assert mock_llm.classify("test") == "CLEAN"

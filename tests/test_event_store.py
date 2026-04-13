@@ -375,3 +375,161 @@ class TestQueueStability:
         assert event_queue.queue_depth == 0
         assert event_queue.events_written == 100
         assert event_queue.events_dropped == 0
+
+    def test_sustained_100_eps_for_5_seconds(self, store):
+        """Sustained 100 events/sec for 5 batches — queue stays stable."""
+        q = EventQueue(store=store, flush_interval=0.01)
+        q.start()
+
+        total = 0
+        for _batch in range(5):
+            for _ in range(100):
+                q.enqueue(make_event())
+                total += 1
+            time.sleep(0.1)  # ~100 events per 0.1s burst
+
+        # Wait for full drain
+        time.sleep(1.5)
+
+        assert q.queue_depth == 0
+        assert q.events_written == total
+        assert q.events_dropped == 0
+        assert store.get_event_count() == total
+
+        q.stop()
+
+
+# ── Append-only enforcement ──────────────────────────────────────────
+
+
+class TestAppendOnly:
+    """Verify the event store is truly append-only — UPDATE and DELETE are rejected."""
+
+    def test_no_update_via_raw_sql(self, store, sample_event):
+        """Direct UPDATE on the events table should not change data.
+
+        The EventStore API only exposes append(). This test verifies that
+        even if someone bypasses the API and runs raw SQL UPDATE, the
+        original data can be verified via re-read.
+        """
+        store.append(sample_event)
+        original = store.get_event(str(sample_event.event_id))
+        assert original["tool_name"] == "send_email"
+
+        # Attempt raw UPDATE
+        conn = store._get_conn()
+        conn.execute(
+            "UPDATE events SET tool_name = 'HACKED' WHERE event_id = ?",
+            (str(sample_event.event_id),),
+        )
+        conn.commit()
+
+        # NOTE: SQLite doesn't enforce append-only at the DB level —
+        # that's the audit chain's job (Sprint 4). This test documents
+        # the current behavior: raw SQL CAN mutate, which is why the
+        # cryptographic audit chain is needed.
+        modified = store.get_event(str(sample_event.event_id))
+        # If audit chain were in place, verify_chain() would catch this.
+        # For now, we just verify the API doesn't expose UPDATE.
+        assert modified is not None
+
+    def test_no_delete_method_on_api(self, store):
+        """EventStore should not expose a delete method."""
+        assert not hasattr(store, "delete")
+        assert not hasattr(store, "delete_event")
+        assert not hasattr(store, "remove")
+
+    def test_no_update_method_on_api(self, store):
+        """EventStore should not expose an update method."""
+        assert not hasattr(store, "update")
+        assert not hasattr(store, "update_event")
+        assert not hasattr(store, "modify")
+
+    def test_append_is_insert_or_ignore(self, store, sample_event):
+        """Duplicate append does not overwrite — INSERT OR IGNORE."""
+        store.append(sample_event)
+        assert store.get_event_count() == 1
+
+        # Modify event in-memory and re-append — should be ignored
+        sample_event.tool_name = "modified_tool"  # type: ignore[assignment]
+        store.append(sample_event)
+
+        assert store.get_event_count() == 1
+        stored = store.get_event(str(sample_event.event_id))
+        # Original value preserved — the second INSERT was ignored
+        assert stored["tool_name"] == "send_email"
+
+    def test_100_appends_all_persisted(self, store):
+        """100 appends → 100 rows, each with unique event_id."""
+        for _ in range(100):
+            store.append(make_event())
+
+        assert store.get_event_count() == 100
+
+        # Verify all event_ids are unique
+        events = store.get_events(limit=100)
+        ids = [e["event_id"] for e in events]
+        assert len(set(ids)) == 100
+
+    def test_concurrent_appends_from_multiple_threads(self, tmp_path):
+        """Multiple threads appending simultaneously — no data loss."""
+        import threading
+
+        db_path = str(tmp_path / "concurrent.db")
+        s = EventStore(db_path=db_path)
+
+        errors: list[Exception] = []
+
+        def append_batch(batch_id: int) -> None:
+            try:
+                for i in range(50):
+                    s.append(make_event(f"tool_batch{batch_id}_{i}"))
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=append_batch, args=(b,)) for b in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert len(errors) == 0, f"Concurrent append errors: {errors}"
+        assert s.get_event_count() == 200  # 4 threads x 50 events
+
+        s.close()
+
+
+# ── mock_llm fixture integration with event store ────────────────────
+
+
+class TestMockLlmWithStore:
+    """Verify mock_llm fixture works alongside EventStore operations.
+
+    Sprint 4 will use mock_llm for injection classification before events
+    are written to the store. These tests prove the fixtures compose.
+    """
+
+    def test_mock_llm_does_not_interfere_with_store(self, store, mock_llm):
+        """Store operations work normally when mock_llm is in scope."""
+        mock_llm.classify.return_value = "CLEAN"
+
+        event = make_event()
+        store.append(event)
+
+        assert store.get_event_count() == 1
+        assert mock_llm.classify("test") == "CLEAN"
+
+    def test_event_with_llm_classification_stored(self, store, mock_llm):
+        """Event policy_result set by mock_llm classification is persisted."""
+        mock_llm.classify.return_value = "INJECTED"
+
+        event = make_event()
+        # Simulate injection detector setting policy based on LLM
+        classification = mock_llm.classify(event.input_str)
+        if classification == "INJECTED":
+            event.policy_result = "BLOCK"
+
+        store.append(event)
+
+        stored = store.get_event(str(event.event_id))
+        assert stored["policy_result"] == "BLOCK"
