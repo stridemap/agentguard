@@ -1,0 +1,70 @@
+{
+  "dashboard": {
+    "title": "AgentGuard Monitoring",
+    "uid": "agentguard-main",
+    "timezone": "browser",
+    "refresh": "10s",
+    "panels": [
+      {
+        "title": "Events Total (by policy result)",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+        "targets": [{"expr": "sum(agentguard_events_total) by (policy_result)"}]
+      },
+      {
+        "title": "Policy Blocks Total",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+        "targets": [{"expr": "sum(agentguard_policy_blocks_total)"}]
+      },
+      {
+        "title": "DLP Detections",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+        "targets": [{"expr": "sum(agentguard_dlp_detections_total)"}]
+      },
+      {
+        "title": "Injection Detections",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+        "targets": [{"expr": "sum(agentguard_injection_detections_total)"}]
+      },
+      {
+        "title": "Latency p99 (seconds)",
+        "type": "gauge",
+        "gridPos": {"h": 6, "w": 8, "x": 0, "y": 4},
+        "targets": [{"expr": "agentguard_latency_seconds{quantile=\"0.99\"}"}]
+      },
+      {
+        "title": "Events by Tool",
+        "type": "piechart",
+        "gridPos": {"h": 6, "w": 8, "x": 8, "y": 4},
+        "targets": [{"expr": "sum(agentguard_events_total) by (tool_name)"}]
+      },
+      {
+        "title": "Events by Agent",
+        "type": "piechart",
+        "gridPos": {"h": 6, "w": 8, "x": 16, "y": 4},
+        "targets": [{"expr": "sum(agentguard_events_total) by (agent_id)"}]
+      },
+      {
+        "title": "Event Rate (per second)",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 10},
+        "targets": [{"expr": "rate(agentguard_events_total[5m])"}]
+      },
+      {
+        "title": "Uptime",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 6, "x": 0, "y": 18},
+        "targets": [{"expr": "agentguard_uptime_seconds"}]
+      },
+      {
+        "title": "Version",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 6, "x": 6, "y": 18},
+        "targets": [{"expr": "agentguard_version"}]
+      }
+    ]
+  }
+}

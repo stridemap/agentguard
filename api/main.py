@@ -73,6 +73,7 @@ _dashboard_url = os.environ.get("AGENTGUARD_DASHBOARD_URL", "http://localhost:85
 
 _store: EventStore | None = None
 _policy_engine: PolicyEngine | None = None
+_metrics_collector = None  # Set externally by interceptor if running in-process
 
 
 def get_store() -> EventStore:
@@ -142,7 +143,12 @@ def health():
 
 @app.get("/metrics", response_class=PlainTextResponse, tags=["System"])
 def metrics():
-    """Prometheus-compatible text/plain metrics."""
+    """Prometheus-compatible text/plain metrics (5 core metrics + version + uptime)."""
+
+    # Use global metrics collector if available, else basic fallback
+    if _metrics_collector is not None:
+        return _metrics_collector.render(version=__version__)
+
     store = get_store()
     count = store.get_event_count()
 

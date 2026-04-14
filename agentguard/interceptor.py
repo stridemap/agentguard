@@ -29,8 +29,10 @@ from agentguard.dlp_scanner import DLPScanner
 from agentguard.event_store import EventQueue, EventStore
 from agentguard.injection_detector import InjectionDetector
 from agentguard.logging import logger
+from agentguard.metrics import MetricsCollector
 from agentguard.models import AgentEvent, InterceptorConfig, RiskFlag
 from agentguard.policy_engine import PolicyEngine
+from agentguard.siem import AlertWebhook, SIEMClient
 
 
 class AgentGuardInterceptor(BaseCallbackHandler):
@@ -119,6 +121,16 @@ class AgentGuardInterceptor(BaseCallbackHandler):
         else:
             self._injection_detector = None
 
+        # Metrics, SIEM, and alerting (always active)
+        self._metrics = MetricsCollector()
+        self._siem_client = SIEMClient()  # reads env vars
+        self._alert_webhook = AlertWebhook()  # reads env vars
+
+    @property
+    def metrics(self) -> MetricsCollector:
+        """Return the metrics collector."""
+        return self._metrics
+
     @property
     def agent_id(self) -> str:
         """Return the configured agent ID."""
@@ -148,6 +160,25 @@ class AgentGuardInterceptor(BaseCallbackHandler):
         """
         if self._event_queue is not None:
             self._event_queue.enqueue(event)
+
+    def _record_observability(self, event: AgentEvent) -> None:
+        """Record metrics and forward to SIEM/alerts (fail-open).
+
+        Called after every completed event. Exceptions are caught so
+        observability failures never block the agent.
+        """
+        import contextlib
+
+        with contextlib.suppress(Exception):
+            self._metrics.record_event(event)
+
+        with contextlib.suppress(Exception):
+            if self._siem_client.is_configured:
+                self._siem_client.send(event)
+
+        with contextlib.suppress(Exception):
+            if self._alert_webhook.is_configured:
+                self._alert_webhook.send(event)
 
     def _log_event(self, event: AgentEvent, phase: str) -> None:
         """Emit a structured JSON log entry for an event.
@@ -360,6 +391,9 @@ class AgentGuardInterceptor(BaseCallbackHandler):
             # Non-blocking enqueue for persistence
             self._enqueue_event(event)
 
+            # Record metrics + forward to SIEM/alerts
+            self._record_observability(event)
+
             # Structured JSON log
             self._log_event(event, "tool_end")
 
@@ -410,6 +444,9 @@ class AgentGuardInterceptor(BaseCallbackHandler):
 
             # Non-blocking enqueue for persistence
             self._enqueue_event(event)
+
+            # Record metrics + forward to SIEM/alerts
+            self._record_observability(event)
 
             # Structured JSON log
             self._log_event(event, "tool_error")
