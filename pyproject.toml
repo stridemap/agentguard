@@ -47,6 +47,18 @@ dependencies = [
     "uvicorn[standard]>=0.29",
 ]
 
+[project.optional-dependencies.postgres]
+dependencies = [
+    "psycopg2-binary>=2.9",
+    "asyncpg>=0.29",
+    "alembic>=1.13",
+]
+
+[project.optional-dependencies.redis]
+dependencies = [
+    "redis>=5.0",
+]
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",

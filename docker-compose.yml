@@ -1,0 +1,68 @@
+# AgentGuard Docker Compose — postgres + redis + api + dashboard
+#
+# Usage:
+#   docker compose up -d
+#   docker compose logs -f agentguard-api
+
+services:
+  # ── PostgreSQL 15 ────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: agentguard
+      POSTGRES_PASSWORD: agentguard
+      POSTGRES_DB: agentguard
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentguard"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis 7 ──────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── AgentGuard API ──────────────────────────────────────────────
+  agentguard-api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://agentguard:agentguard@postgres:5432/agentguard
+      AGENTGUARD_QUEUE_BACKEND: redis
+      AGENTGUARD_REDIS_URL: redis://redis:6379/0
+      AGENTGUARD_POLICY_PATH: policies/default.yaml
+      AGENTGUARD_JWT_SECRET: ${AGENTGUARD_JWT_SECRET:-change-me-in-production}
+      AGENTGUARD_ADMIN_KEY: ${AGENTGUARD_ADMIN_KEY:-admin-key-dev}
+      AGENTGUARD_LLM_PROVIDER: mock
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── Streamlit Dashboard ─────────────────────────────────────────
+  dashboard:
+    build: .
+    command: ["python", "-m", "streamlit", "run", "dashboard/app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+    ports:
+      - "8501:8501"
+    environment:
+      DATABASE_URL: postgresql://agentguard:agentguard@postgres:5432/agentguard
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
