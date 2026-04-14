@@ -65,6 +65,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ── SSO router ───────────────────────────────────────────────────────
+
+from api.rbac import TenantScope, filter_events_by_scope, get_tenant_scope  # noqa: E402
+from api.sessions import SessionManager  # noqa: E402
+from api.sso import router as sso_router  # noqa: E402
+
+app.include_router(sso_router)
+
+_session_manager = SessionManager()
+
 # ── Shared state ─────────────────────────────────────────────────────
 
 _db_path = os.environ.get("DATABASE_URL", "agentguard.db")
@@ -182,20 +192,52 @@ def create_auth_token(request: TokenRequest):
     return TokenResponse(access_token=token, role=role)
 
 
-# ── 4. POST /events (authenticated) ─────────────────────────────────
+# ── 3b. POST /auth/refresh ──────────────────────────────────────────
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+@app.post("/auth/refresh", tags=["Auth"])
+def refresh_auth_token(request: RefreshRequest):
+    """Exchange a refresh token for a new JWT."""
+    result = _session_manager.refresh(request.refresh_token)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+        )
+    return result
+
+
+# ── 3c. POST /auth/revoke ───────────────────────────────────────────
+
+
+@app.post("/auth/revoke", tags=["Auth"])
+def revoke_token(request: RefreshRequest):
+    """Revoke a refresh token (logout)."""
+    revoked = _session_manager.revoke(request.refresh_token)
+    return {"revoked": revoked}
+
+
+# ── 4. POST /events (authenticated + tenant-filtered) ────────────────
 
 
 @app.post("/events", tags=["Events"])
 def query_events(
     query: EventQuery,
     _user: Annotated[TokenPayload, Depends(check_rate_limit)],
+    scope: Annotated[TenantScope, Depends(get_tenant_scope)],
 ) -> list[dict[str, Any]]:
-    """Query events with filter parameters."""
+    """Query events with filter parameters + tenant scope filtering."""
     store = get_store()
     events = store.get_events(limit=query.limit, offset=query.offset)
 
-    # Apply filters
-    filtered = events
+    # Apply tenant scope (row-level RBAC)
+    filtered = filter_events_by_scope(events, scope)
+
+    # Apply user filters
     if query.agent_id:
         filtered = [e for e in filtered if e.get("agent_id") == query.agent_id]
     if query.tool_name:
