@@ -972,7 +972,7 @@ class TestHealthCheck:
         health = interceptor.health_check()
 
         assert health["status"] == "healthy"
-        assert health["version"] == "1.0.0"
+        assert health["version"] == "1.5.0"
         assert health["agent_id"] == "health-test"
         assert health["session_id"] == "sess-1"
         assert health["events_in_memory"] == 0

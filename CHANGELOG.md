@@ -2,6 +2,53 @@
 
 All notable changes to AgentGuard are documented here.
 
+## [1.5.0] — 2026-04-13
+
+### Added — Pilot Ready (Sprints 9-12)
+
+#### Enterprise Authentication
+- **OIDC/OAuth 2.0 SSO**: Okta, Azure AD, Google Workspace via authlib
+- **SAML 2.0 SP**: Stub implementation for enterprise IdP integration
+- **Refresh tokens**: Redis-backed session management (7-day TTL)
+- **Row-level RBAC**: Tenant isolation — users see only assigned agent events
+
+#### Next.js Enterprise Dashboard
+- **Live Feed** (`/dashboard`): Recharts visualizations, 4 metric cards, auto-refresh, risk colour coding, event detail panel
+- **Audit Chain** (`/dashboard/audit`): One-click verify, tampered event display
+- **Policy Manager** (`/dashboard/policies`): Rule list with action badges, one-click reload
+- **Compliance Reports** (`/dashboard/reports`): SOC2 CC6, HIPAA §164.312, ISO 27001 A.12.4 exports
+- **Settings** (`/dashboard/settings`): API auth, connection status
+- **RBAC-gated sidebar**: Admin sees all, Analyst/Auditor/Viewer restricted
+
+#### Compliance Reports (auto-populated)
+- **SOC2 CC6**: CC6.1 (access security), CC6.6 (system boundaries), CC6.8 (unauthorized access)
+- **HIPAA §164.312**: §164.312(a)-(e) technical safeguards evidence pack
+- **ISO 27001 A.12.4**: A.12.4.1-4 logging and monitoring controls
+- **Compliance API**: `/compliance/soc2`, `/compliance/hipaa`, `/compliance/iso27001`
+
+#### Data Retention
+- Configurable retention periods: 30/90/365 days per regulation
+- `/compliance/retention/status` and `/compliance/retention/enforce` endpoints
+- Dry-run mode for safe preview before purging
+
+#### Infrastructure
+- **Kubernetes Helm chart**: API + worker + dashboard deployments, HPA, ingress, secrets
+- **Docker**: Multi-stage python:3.11-slim, non-root user, HEALTHCHECK
+- **GHCR publishing**: GitHub Actions workflow on tag/release
+- **K8s smoke test**: 9-check bash script
+
+#### Pilot Onboarding
+- **ONBOARDING.md**: 5-minute setup guide (pip, Docker Compose, Helm)
+- Configuration reference table
+- Compliance report generation instructions
+
+### Changed
+- Version bumped to 1.5.0
+- Policy Engine v2: regex conditions (input_regex, output_regex) + AND/OR match modes
+- Dashboard upgraded from Streamlit MVP to Next.js 14 + Recharts
+
+---
+
 ## [1.0.0] — 2026-04-13
 
 ### Added
