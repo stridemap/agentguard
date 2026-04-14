@@ -2,6 +2,50 @@
 
 All notable changes to AgentGuard are documented here.
 
+## [2.0.0] — 2026-04-13
+
+### Added — Production Scale (Sprints 13-16)
+
+#### Multi-Agent Federation
+- **FederationManager**: agent registry, distributed trace sessions (W3C TraceContext-inspired), handoff tracking, directed call graphs
+- **Federation policies**: inter-agent rules with wildcards and tool conditions
+- **12 API endpoints**: `/federation/agents`, `/federation/sessions`, `/federation/rules`, etc.
+
+#### Policy Marketplace
+- **5 community policy packs**: finance/pci_dss, finance/sox, healthcare/hipaa, legal/privilege, it/security_ops
+- **PolicyMarketplace**: discover, search, preview, and install packs
+- **5 API endpoints**: `/marketplace/packs`, `/marketplace/search`, `/marketplace/install`
+
+#### S3 Audit Archival
+- **AuditArchiver**: nightly export to S3 (AES256), GCS, or local filesystem
+- Archive includes events + chain verification result as JSON
+
+#### Multi-Tenant SaaS
+- **TenantManager**: create/suspend/delete organizations
+- **Tenant isolation**: separate SQLite DB per tenant
+- **Billing metadata**: event_count, api_calls, storage_bytes per period
+- **10 API endpoints**: `/tenants/*` for full lifecycle management
+
+#### SDK Adapters
+- **govern_tool_call()**: universal wrapper for any agent framework
+- **govern_openai_tool()**: native OpenAI Agents SDK adapter
+- **govern_anthropic_tool()**: native Anthropic Claude SDK adapter
+- **GovernedToolRunner**: reusable wrapper class
+
+#### Performance Hardening
+- **Locust load test**: sustained 500 events/sec configuration
+- **Performance gate tests**: enforced SLAs on every release (interceptor p50/p95/p99, policy p99, queue p99, injection Stage 1 p99, store append p99, throughput 500/sec)
+
+#### Documentation
+- **COMPATIBILITY.md**: integration guides for 6 agent frameworks
+- **MIGRATION.md**: v1.5 → v2.0 upgrade guide (no breaking changes)
+
+### Changed
+- Version bumped to 2.0.0
+- 391+ tests, 84%+ coverage
+
+---
+
 ## [1.5.0] — 2026-04-13
 
 ### Added — Pilot Ready (Sprints 9-12)
