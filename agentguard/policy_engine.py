@@ -55,7 +55,11 @@ class PolicyDecision(BaseModel):
 
 
 class PolicyConditions(BaseModel):
-    """Conditions that must all be true for a rule to match (AND logic)."""
+    """Conditions for a rule to match.
+
+    Default match_mode is 'and' — all non-null conditions must match.
+    Set match_mode to 'or' for any-condition matching.
+    """
 
     tool_name: str | list[str] | None = Field(
         default=None, description="Tool name string, regex, or list. None = any tool."
@@ -71,6 +75,18 @@ class PolicyConditions(BaseModel):
     direction: str = Field(default="both", description="'input' | 'output' | 'both'")
     agent_id: str | None = Field(
         default=None, description="Agent ID to match. None = any agent."
+    )
+    input_regex: str | None = Field(
+        default=None,
+        description="Regex pattern to match against input_str. None = skip.",
+    )
+    output_regex: str | None = Field(
+        default=None,
+        description="Regex pattern to match against output_str. None = skip.",
+    )
+    match_mode: str = Field(
+        default="and",
+        description="'and' = all conditions must match, 'or' = any condition matches.",
     )
 
 
@@ -229,33 +245,51 @@ class PolicyEngine:
         )
 
     def _matches(self, rule: PolicyRule, event: AgentEvent) -> bool:
-        """Check if all conditions of a rule match the event (AND logic).
+        """Check if conditions match the event.
 
-        All non-null conditions must match. Null conditions are wildcards.
+        match_mode='and' (default): all non-null conditions must match.
+        match_mode='or': any non-null condition matching is sufficient.
+        Null conditions are wildcards (always true in AND, ignored in OR).
         """
         cond = rule.conditions
+        checks: list[bool] = []
 
         # agent_id
-        if cond.agent_id is not None and cond.agent_id != event.agent_id:
-            return False
+        if cond.agent_id is not None:
+            checks.append(cond.agent_id == event.agent_id)
 
         # tool_name
-        if cond.tool_name is not None and not self._matches_tool_name(
-            cond.tool_name, event.tool_name
-        ):
-            return False
+        if cond.tool_name is not None:
+            checks.append(self._matches_tool_name(cond.tool_name, event.tool_name))
 
-        # destination_domain (checked against input/output URLs)
+        # destination_domain
         if cond.destination_domain is not None:
             text = self._get_text_for_direction(event, cond.direction)
-            if not self._matches_domain(cond.destination_domain, text):
-                return False
+            checks.append(self._matches_domain(cond.destination_domain, text))
 
-        # data_pattern (checked against risk_flags for PII — full DLP in dlp_scanner)
-        return not (
-            cond.data_pattern is not None
-            and not self._matches_data_pattern(cond.data_pattern, event)
-        )
+        # data_pattern
+        if cond.data_pattern is not None:
+            checks.append(self._matches_data_pattern(cond.data_pattern, event))
+
+        # input_regex (v2)
+        if cond.input_regex is not None:
+            checks.append(
+                bool(re.search(cond.input_regex, event.input_str, re.IGNORECASE))
+            )
+
+        # output_regex (v2)
+        if cond.output_regex is not None:
+            checks.append(
+                bool(re.search(cond.output_regex, event.output_str, re.IGNORECASE))
+            )
+
+        # No conditions set = wildcard match
+        if not checks:
+            return True
+
+        if cond.match_mode == "or":
+            return any(checks)
+        return all(checks)
 
     @staticmethod
     def _matches_tool_name(pattern: str | list[str], tool_name: str) -> bool:

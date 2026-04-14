@@ -93,7 +93,7 @@ _PATTERNS: list[tuple[str, str, str]] = [
     ("dan_pattern", r"(DAN|do\s+anything\s+now|jailbreak)\s*[:\-]?\s*", "INJECTED"),
     (
         "new_instructions",
-        r"(new|updated|revised|override)\s+instructions?\s*[:\-]",
+        r"(new|updated|revised|override)\s+instructions?\s*(override)?\s*[:\-]",
         "INJECTED",
     ),
     (
@@ -135,10 +135,15 @@ _PATTERNS: list[tuple[str, str, str]] = [
         r"(webhook|callback|POST\s+to)\s+https?://(?!.*internal)",
         "SUSPICIOUS",
     ),
+    (
+        "forward_to_url",
+        r"(forward|upload|send\s+the\s+results?\s+to)\s+.{0,20}https?://",
+        "SUSPICIOUS",
+    ),
     # ── Role manipulation ────────────────────────────────────────
     (
         "pretend_admin",
-        r"(pretend|assume|act)\s+(you\s+)?(are|have)\s+(admin|root|superuser|unlimited)",
+        r"(pretend|assume|act)\s+(you\s+)?(are|have)\s+(an?\s+)?(admin|root|superuser|unlimited)",
         "INJECTED",
     ),
     (

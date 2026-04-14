@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentguard"
-version = "0.1.0"
+version = "1.0.0"
 description = "Guardrails and policy enforcement for AI agents — the open-source governance layer for LLM-powered agents."
 readme = "README.md"
 license = "MIT"
@@ -68,11 +68,15 @@ dev = [
     "black>=24.0",
 ]
 
+[project.scripts]
+agentguard = "agentguard.__main__:main"
+
 [project.urls]
 Homepage = "https://stridemap.ai"
 Repository = "https://github.com/stridemap/agentguard"
 Documentation = "https://github.com/stridemap/agentguard#readme"
 Issues = "https://github.com/stridemap/agentguard/issues"
+Changelog = "https://github.com/stridemap/agentguard/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 include = ["agentguard*"]

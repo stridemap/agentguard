@@ -1,6 +1,6 @@
 """AgentGuard - Guardrails and policy enforcement for AI agents."""
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 
 from agentguard.dlp_scanner import DLPConfig, DLPResult, DLPScanner
 from agentguard.event_store import EventQueue, EventStore
