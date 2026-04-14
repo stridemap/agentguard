@@ -1,0 +1,46 @@
+# AgentGuard Policy Pack: PCI-DSS Compliance
+# Industry: Financial Services
+# Regulation: PCI-DSS v4.0
+# Author: Stridemap Community
+
+rules:
+  - id: pci_block_card_data_external
+    name: Block Card Data External
+    description: Block credit card numbers from leaving the network (PCI-DSS Req 3.4)
+    priority: 1
+    conditions:
+      data_pattern: "CREDIT_CARD"
+      direction: "output"
+      destination_domain: "!internal.company.com"
+    action: BLOCK
+    alert_severity: CRITICAL
+
+  - id: pci_block_cvv_storage
+    name: Block CVV Storage
+    description: Prevent CVV/CVC storage in any tool output (PCI-DSS Req 3.2)
+    priority: 2
+    conditions:
+      output_regex: "\\b(cvv|cvc|cv2)\\s*[:=]\\s*\\d{3,4}\\b"
+      direction: "output"
+    action: BLOCK
+    alert_severity: CRITICAL
+
+  - id: pci_alert_cardholder_access
+    name: Alert Cardholder Data Access
+    description: Alert when any agent accesses cardholder data (PCI-DSS Req 7.1)
+    priority: 20
+    conditions:
+      data_pattern: "CREDIT_CARD"
+      direction: "both"
+    action: ALERT
+    alert_severity: HIGH
+
+  - id: pci_block_pan_email
+    name: Block PAN in Email
+    description: Block full PAN in email communications (PCI-DSS Req 4.2)
+    priority: 5
+    conditions:
+      tool_name: "send_email"
+      output_regex: "\\b\\d{4}[-\\s]?\\d{4}[-\\s]?\\d{4}[-\\s]?\\d{4}\\b"
+    action: BLOCK
+    alert_severity: CRITICAL

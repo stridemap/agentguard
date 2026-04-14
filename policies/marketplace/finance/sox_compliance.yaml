@@ -1,0 +1,35 @@
+# AgentGuard Policy Pack: SOX Compliance
+# Industry: Financial Services
+# Regulation: Sarbanes-Oxley Act
+# Author: Stridemap Community
+
+rules:
+  - id: sox_alert_financial_data
+    name: Alert Financial Data Access
+    description: Alert on access to financial records (SOX Section 302)
+    priority: 15
+    conditions:
+      tool_name: "query_ledger|access_financials|read_accounting"
+      direction: "both"
+    action: ALERT
+    alert_severity: HIGH
+
+  - id: sox_block_unauthorized_adjustment
+    name: Block Unauthorized Adjustment
+    description: Block financial adjustments without dual approval
+    priority: 5
+    conditions:
+      tool_name: "adjust_entry|modify_ledger|write_off"
+      direction: "both"
+    action: BLOCK
+    alert_severity: CRITICAL
+
+  - id: sox_audit_trail_required
+    name: Require Audit Trail
+    description: Alert on any financial tool call for audit purposes
+    priority: 50
+    conditions:
+      input_regex: "(revenue|expense|balance|journal|ledger)"
+      match_mode: "or"
+    action: ALERT
+    alert_severity: MEDIUM

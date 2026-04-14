@@ -1,0 +1,56 @@
+# AgentGuard Policy Pack: HIPAA PHI Protection
+# Industry: Healthcare
+# Regulation: HIPAA Security Rule / Privacy Rule
+# Author: Stridemap Community
+
+rules:
+  - id: hipaa_block_phi_external
+    name: Block PHI External
+    description: Block PHI from leaving the covered entity network (HIPAA §164.502)
+    priority: 1
+    conditions:
+      data_pattern: "US_SSN"
+      destination_domain: "!internal.company.com"
+      direction: "output"
+    action: BLOCK
+    alert_severity: CRITICAL
+
+  - id: hipaa_block_medical_records_external
+    name: Block Medical Records External
+    description: Block medical records in external communications
+    priority: 2
+    conditions:
+      tool_name: "send_email|post_webhook|http_request"
+      output_regex: "(diagnosis|medication|treatment|procedure|ICD-\\d+)"
+      destination_domain: "!internal.company.com"
+    action: BLOCK
+    alert_severity: CRITICAL
+
+  - id: hipaa_alert_patient_lookup
+    name: Alert Patient Record Lookup
+    description: Log all access to patient records (HIPAA §164.312(b))
+    priority: 20
+    conditions:
+      tool_name: "read_patient_record|query_ehr|lookup_patient|search_patients"
+      direction: "both"
+    action: ALERT
+    alert_severity: HIGH
+
+  - id: hipaa_block_dob_ssn_combo
+    name: Block DOB+SSN Combination
+    description: Block outputs containing both DOB and SSN together
+    priority: 3
+    conditions:
+      output_regex: "(\\d{2}/\\d{2}/\\d{4}.*\\d{3}-\\d{2}-\\d{4}|\\d{3}-\\d{2}-\\d{4}.*\\d{2}/\\d{2}/\\d{4})"
+    action: BLOCK
+    alert_severity: CRITICAL
+
+  - id: hipaa_minimum_necessary
+    name: Minimum Necessary Standard
+    description: Alert when agent requests more patient data than needed
+    priority: 30
+    conditions:
+      tool_name: "query_ehr"
+      input_regex: "(SELECT \\*|all records|full history|complete chart)"
+    action: ALERT
+    alert_severity: HIGH

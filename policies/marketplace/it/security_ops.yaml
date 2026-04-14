@@ -1,0 +1,52 @@
+# AgentGuard Policy Pack: IT Security Operations
+# Industry: Technology / DevOps / IT
+# Author: Stridemap Community
+
+rules:
+  - id: it_block_credential_exfil
+    name: Block Credential Exfiltration
+    description: Block API keys, tokens, and passwords from external transmission
+    priority: 1
+    conditions:
+      output_regex: "(api[_-]?key|bearer\\s+[a-zA-Z0-9]{20,}|password\\s*[:=]|secret\\s*[:=])"
+      destination_domain: "!internal.company.com"
+    action: BLOCK
+    alert_severity: CRITICAL
+
+  - id: it_block_destructive_ops
+    name: Block Destructive Operations
+    description: Block DELETE, DROP, TRUNCATE operations without approval
+    priority: 3
+    conditions:
+      input_regex: "(DROP\\s+TABLE|DELETE\\s+FROM|TRUNCATE|rm\\s+-rf|format\\s+c:)"
+    action: BLOCK
+    alert_severity: CRITICAL
+
+  - id: it_alert_admin_actions
+    name: Alert Admin Actions
+    description: Alert on privileged operations (sudo, admin panel, root access)
+    priority: 15
+    conditions:
+      input_regex: "(sudo|admin|root access|elevated privileges|chmod 777)"
+      match_mode: "or"
+    action: ALERT
+    alert_severity: HIGH
+
+  - id: it_block_internal_ip_disclosure
+    name: Block Internal IP Disclosure
+    description: Block internal IP addresses from external exposure
+    priority: 10
+    conditions:
+      output_regex: "(10\\.\\d+\\.\\d+\\.\\d+|172\\.(1[6-9]|2\\d|3[01])\\.\\d+\\.\\d+|192\\.168\\.\\d+\\.\\d+)"
+      destination_domain: "!internal.company.com"
+    action: BLOCK
+    alert_severity: HIGH
+
+  - id: it_alert_config_change
+    name: Alert Configuration Change
+    description: Alert when agent modifies system configuration
+    priority: 20
+    conditions:
+      tool_name: "update_config|modify_settings|change_env"
+    action: ALERT
+    alert_severity: MEDIUM

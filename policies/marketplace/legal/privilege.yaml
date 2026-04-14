@@ -1,0 +1,44 @@
+# AgentGuard Policy Pack: Legal Privilege Protection
+# Industry: Legal / Law Firms
+# Author: Stridemap Community
+
+rules:
+  - id: legal_block_privileged_external
+    name: Block Privileged Info External
+    description: Block attorney-client privileged information from external disclosure
+    priority: 1
+    conditions:
+      output_regex: "(privileged|attorney.client|work product|confidential.*legal)"
+      destination_domain: "!internal.company.com"
+      direction: "output"
+    action: BLOCK
+    alert_severity: CRITICAL
+
+  - id: legal_alert_case_access
+    name: Alert Case File Access
+    description: Log all access to case files and legal documents
+    priority: 20
+    conditions:
+      tool_name: "read_case|query_legal_db|access_document"
+      direction: "both"
+    action: ALERT
+    alert_severity: HIGH
+
+  - id: legal_block_opposing_counsel
+    name: Block Communication with Opposing Counsel
+    description: Prevent unauthorized communication with opposing parties
+    priority: 5
+    conditions:
+      tool_name: "send_email"
+      input_regex: "(opposing counsel|adverse party|plaintiff.*counsel)"
+    action: BLOCK
+    alert_severity: CRITICAL
+
+  - id: legal_alert_contract_modification
+    name: Alert Contract Modification
+    description: Alert when agent modifies contract terms
+    priority: 25
+    conditions:
+      tool_name: "edit_contract|modify_terms|amend_agreement"
+    action: ALERT
+    alert_severity: HIGH

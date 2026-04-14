@@ -69,6 +69,7 @@ app.add_middleware(
 
 from api.compliance import router as compliance_router  # noqa: E402
 from api.federation import router as federation_router  # noqa: E402
+from api.marketplace import router as marketplace_router  # noqa: E402
 from api.rbac import TenantScope, filter_events_by_scope, get_tenant_scope  # noqa: E402
 from api.sessions import SessionManager  # noqa: E402
 from api.sso import router as sso_router  # noqa: E402
@@ -76,6 +77,7 @@ from api.sso import router as sso_router  # noqa: E402
 app.include_router(sso_router)
 app.include_router(compliance_router)
 app.include_router(federation_router)
+app.include_router(marketplace_router)
 
 _session_manager = SessionManager()
 
