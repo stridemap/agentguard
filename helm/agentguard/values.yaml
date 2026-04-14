@@ -1,0 +1,123 @@
+# AgentGuard Helm Chart — Default values (dev environment)
+# Override per environment: helm install -f values-prod.yaml
+
+# ── Global ───────────────────────────────────────────────────────────
+nameOverride: ""
+fullnameOverride: ""
+
+# ── API Deployment ───────────────────────────────────────────────────
+api:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/stridemap/agentguard
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  port: 8000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  env:
+    DATABASE_URL: "postgresql://agentguard:agentguard@postgres:5432/agentguard"
+    AGENTGUARD_QUEUE_BACKEND: "redis"
+    AGENTGUARD_REDIS_URL: "redis://redis:6379/0"
+    AGENTGUARD_POLICY_PATH: "policies/default.yaml"
+    AGENTGUARD_LLM_PROVIDER: "mock"
+    AGENTGUARD_LOG_LEVEL: "INFO"
+  # JWT secret — override in production!
+  jwtSecret: "change-me-in-production"
+  # Liveness/readiness probes
+  healthPath: /health
+  livenessProbe:
+    initialDelaySeconds: 10
+    periodSeconds: 30
+  readinessProbe:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+# ── Worker Deployment (queue consumer) ───────────────────────────────
+worker:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: ghcr.io/stridemap/agentguard
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  command: ["python", "-m", "agentguard"]
+  args: ["worker"]
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# ── Dashboard Deployment (Streamlit) ─────────────────────────────────
+dashboard:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: ghcr.io/stridemap/agentguard
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  port: 8501
+  command: ["python", "-m", "streamlit", "run", "dashboard/app.py",
+            "--server.port=8501", "--server.address=0.0.0.0"]
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 250m
+      memory: 512Mi
+
+# ── PostgreSQL (subchart or external) ────────────────────────────────
+postgresql:
+  enabled: true
+  auth:
+    username: agentguard
+    password: agentguard
+    database: agentguard
+  primary:
+    persistence:
+      size: 10Gi
+
+# ── Redis (subchart or external) ─────────────────────────────────────
+redis:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: false
+
+# ── Ingress ──────────────────────────────────────────────────────────
+ingress:
+  enabled: false
+  className: nginx
+  annotations: {}
+  hosts:
+    - host: agentguard.local
+      paths:
+        - path: /
+          pathType: Prefix
+          service: api
+  tls: []
+
+# ── HPA (Horizontal Pod Autoscaler) ─────────────────────────────────
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 10
+  # Scale on CPU or custom queue_depth metric
+  targetCPUUtilizationPercentage: 70
+  # Custom metric (requires metrics-server + prometheus-adapter)
+  # targetQueueDepth: 100
+
+# ── Service Account ─────────────────────────────────────────────────
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}

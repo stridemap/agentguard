@@ -1,0 +1,62 @@
+# AgentGuard Helm — Production overrides
+# Usage: helm install agentguard ./helm/agentguard -f helm/agentguard/values-prod.yaml
+
+api:
+  replicaCount: 3
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 1Gi
+  env:
+    AGENTGUARD_LOG_LEVEL: "WARNING"
+    AGENTGUARD_LLM_PROVIDER: "ollama"
+
+worker:
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+dashboard:
+  replicaCount: 1
+
+postgresql:
+  primary:
+    persistence:
+      size: 50Gi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 60
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+  hosts:
+    - host: api.stridemap.ai
+      paths:
+        - path: /
+          pathType: Prefix
+          service: api
+    - host: dashboard.stridemap.ai
+      paths:
+        - path: /
+          pathType: Prefix
+          service: dashboard
+  tls:
+    - secretName: agentguard-tls
+      hosts:
+        - api.stridemap.ai
+        - dashboard.stridemap.ai
