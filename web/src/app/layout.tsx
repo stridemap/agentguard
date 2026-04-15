@@ -2,36 +2,37 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AgentGuard — Guardrails for the Agentic Frontier",
+  title: "Stridemap Labs — Securing the Agentic Frontier",
   description:
-    "Open-source governance layer for LLM-powered AI agents. Policy enforcement, DLP scanning, prompt injection detection, and tamper-proof audit logging — without changing a line of agent code.",
+    "Stridemap Labs builds security infrastructure for the AI agent era. AgentGuard: open-source governance, DLP, injection detection, and audit logging for LLM-powered agents.",
   keywords: [
+    "AI security",
     "AI agents",
+    "agent governance",
+    "LLM security",
     "guardrails",
-    "LangGraph",
-    "LangChain",
-    "policy engine",
     "DLP",
     "prompt injection",
-    "AI security",
-    "agent governance",
+    "AgentGuard",
+    "Stridemap Labs",
+    "enterprise AI",
     "open source",
   ],
-  authors: [{ name: "Stridemap", url: "https://stridemap.ai" }],
+  authors: [{ name: "Stridemap Labs", url: "https://stridemap.ai" }],
   openGraph: {
-    title: "AgentGuard — Guardrails for the Agentic Frontier",
+    title: "Stridemap Labs — Securing the Agentic Frontier",
     description:
-      "Open-source governance layer for LLM-powered AI agents. Policy enforcement, DLP scanning, prompt injection detection, and tamper-proof audit logging.",
+      "Security infrastructure for LLM-powered AI agents. Policy enforcement, DLP scanning, injection detection, and tamper-proof audit logging.",
     url: "https://stridemap.ai",
-    siteName: "AgentGuard by Stridemap",
+    siteName: "Stridemap Labs",
     locale: "en_US",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "AgentGuard — Guardrails for the Agentic Frontier",
+    title: "Stridemap Labs — Securing the Agentic Frontier",
     description:
-      "Open-source governance layer for LLM-powered AI agents. Policy enforcement, DLP, injection detection, audit logging.",
+      "AI security infrastructure for the enterprise. Open-source agent governance, DLP, injection detection, audit logging.",
   },
   metadataBase: new URL("https://stridemap.ai"),
 };
