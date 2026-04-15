@@ -494,6 +494,7 @@ function Footer() {
               <ul className="space-y-2 text-text-secondary">
                 <li><a href="https://github.com/stridemap" className="transition hover:text-accent">GitHub</a></li>
                 <li><a href="mailto:support@stridemap.ai" className="transition hover:text-accent">Contact</a></li>
+                <li><a href="mailto:support@stridemap.ai" className="text-text-muted transition hover:text-accent">support@stridemap.ai</a></li>
               </ul>
             </div>
           </div>
