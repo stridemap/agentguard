@@ -1,8 +1,10 @@
-# dashboard/ — Streamlit Trace Viewer
+# dashboard/ — Streamlit Trace Viewer (Legacy MVP)
+
+Part of [AgentGuard](https://stridemap.ai) by Stridemap Labs LLC.
 
 ## Overview
 
-Real-time agent trace visualization dashboard built with Streamlit. This is the MVP dashboard (Sprints 2-10). It will be replaced by a Next.js enterprise dashboard in Sprint 11.
+Real-time agent trace visualization dashboard built with Streamlit. This was the MVP dashboard (Sprints 2-10). The primary dashboard is now the Next.js enterprise dashboard at https://stridemap.ai/dashboard (Sprint 11+). This Streamlit version remains available for local development and Docker Compose deployments.
 
 ## Running
 

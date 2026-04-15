@@ -1,5 +1,7 @@
 # AgentGuard — OWASP LLM Top 10 Attack Coverage Matrix
 
+A product by [Stridemap Labs LLC](https://stridemap.ai) — AI Security for the Enterprise.
+
 Maps each OWASP LLM category to AgentGuard modules, test coverage, and demo scenarios.
 
 ## Coverage Summary

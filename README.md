@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/AgentGuard-Guardrails%20for%20AI%20Agents-00D4AA?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiPjxwYXRoIGQ9Ik0xMiAybDcgNHY1YzAgNS4yNS0zLjUgOS43NS03IDExLTMuNS0xLjI1LTctNS43NS03LTExVjZsNy00eiIvPjwvc3ZnPg==&logoColor=white" alt="AgentGuard" />
+  <img src="https://img.shields.io/badge/AgentGuard-AI%20Agent%20Security-00D4AA?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiPjxwYXRoIGQ9Ik0xMiAybDcgNHY1YzAgNS4yNS0zLjUgOS43NS03IDExLTMuNS0xLjI1LTctNS43NS03LTExVjZsNy00eiIvPjwvc3ZnPg==&logoColor=white" alt="AgentGuard" />
 </p>
 
 <p align="center">
   <strong>The open-source governance layer for LLM-powered AI agents.</strong><br/>
-  Think Palo Alto Prisma, but for AI agents.
+  A product by <a href="https://stridemap.ai">Stridemap Labs LLC</a> — Securing the Agentic Frontier.
 </p>
 
 <p align="center">
@@ -15,6 +15,17 @@
   <a href="https://pypi.org/project/agentguard/"><img src="https://img.shields.io/pypi/pyversions/agentguard" alt="Python Versions" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT" /></a>
 </p>
+
+---
+
+## Live Deployment
+
+| Service | URL |
+|---------|-----|
+| **Website** | [stridemap.ai](https://stridemap.ai) |
+| **Dashboard** | [stridemap.ai/dashboard](https://stridemap.ai/dashboard) |
+| **API** | [api-production-13f3.up.railway.app](https://api-production-13f3.up.railway.app) |
+| **API Docs** | [api-production-13f3.up.railway.app/docs](https://api-production-13f3.up.railway.app/docs) |
 
 ---
 
@@ -87,40 +98,44 @@ flowchart TB
 | Module | What It Does | Key Specs |
 |--------|-------------|-----------|
 | **Interceptor** | LangGraph `BaseCallbackHandler` — captures every `on_tool_start` / `on_tool_end` event | Fail-open guarantee · <5ms p50 overhead |
-| **Policy Engine** | YAML-based rule evaluation with ALLOW / BLOCK / ALERT / BYPASS actions | Hot-reload · <5ms p99 · priority ordering |
+| **Policy Engine v2** | YAML-based rule evaluation with regex conditions, AND/OR logic, hot-reload | <5ms p99 · priority ordering |
 | **DLP Scanner** | Microsoft Presidio PII detection — SSN, credit card, email, phone, medical license, and 10+ more | 100% local · zero data egress · <50ms/10KB |
-| **Injection Detector** | Two-stage defense: fast regex patterns (OWASP LLM01-06) + LLM classifier for edge cases | Precision >0.90 · recall >0.85 · Stage 1 <5ms |
+| **Injection Detector** | Two-stage defense: 23 regex patterns (OWASP LLM01-06) + LLM classifier for edge cases | Precision >0.90 · recall >0.92 · Stage 1 <5ms |
 | **Audit Chain** | SHA-256 cryptographic chaining — every event hash includes previous event hash | Tamper-evident · SOC2/HIPAA-ready · CLI verify |
 
 ---
 
-## Comparison
+## Full Feature Set (v2.0)
 
-| Feature | AgentGuard | LangSmith | HiddenLayer | CalypsoAI |
-|---------|:----------:|:---------:|:-----------:|:---------:|
-| Open Source (MIT) | ✅ | ❌ | ❌ | ❌ |
-| Tool-Call Interception | ✅ | ✅ | ❌ | ◐ |
-| YAML Policy-as-Code | ✅ | ❌ | ❌ | ◐ |
-| DLP / PII Scanning (Local) | ✅ | ❌ | ◐ | ✅ |
-| Prompt Injection Detection | ✅ | ❌ | ✅ | ✅ |
-| Cryptographic Audit Chain | ✅ | ❌ | ❌ | ❌ |
-| Zero Agent Code Changes | ✅ | ✅ | ❌ | ❌ |
-| Fail-Open Guarantee | ✅ | ❌ | ❌ | ❌ |
-| Self-Hosted / VPC | ✅ | ◐ | ✅ | ❌ |
+| Category | Features |
+|----------|----------|
+| **Core Governance** | Interceptor, Policy Engine v2, DLP Scanner, Injection Detector, Audit Chain |
+| **REST API** | 40+ FastAPI endpoints, JWT auth, RBAC (admin/analyst/auditor), rate limiting |
+| **Observability** | SIEM/CEF webhooks (Splunk/Datadog), Prometheus metrics, alert webhooks, Grafana template |
+| **Enterprise Auth** | OIDC SSO (Okta/Azure AD), SAML 2.0 stub, refresh tokens, row-level tenant isolation |
+| **Infrastructure** | Docker, Docker Compose, Helm chart (K8s), HPA autoscaling, Railway deployment |
+| **Storage** | SQLite (dev) / PostgreSQL (prod), Redis queue, S3/GCS audit archival |
+| **Multi-Agent** | Federation manager, distributed trace sessions, cross-agent call graphs, federation policies |
+| **Compliance** | SOC2 CC6 / HIPAA §164.312 / ISO 27001 A.12.4 auto-populated reports, data retention |
+| **Marketplace** | 5 community policy packs (PCI-DSS, SOX, HIPAA, Legal, IT Security) |
+| **Dashboard** | Next.js 14 enterprise dashboard: live feed, audit viewer, policy manager, compliance exports |
+| **SDK Adapters** | Native support for LangGraph, OpenAI Agents SDK, Anthropic Claude SDK, CrewAI, AutoGen |
 
 ---
 
 ## Project Structure
 
 ```
-agentguard/          Core Python package — interceptor, policy engine, DLP, injection, audit
-web/                 Next.js 14 frontend — landing page (stridemap.ai) + enterprise dashboard
-dashboard/           Streamlit real-time trace viewer (MVP)
-demo/                Runnable attack scenario scripts (PII_EXFIL, INJECT, UNAUTH)
-policies/            YAML policy definitions (default, finance, healthcare)
-tests/               pytest test suite — 80% coverage minimum, performance assertions
-docs/                PRD, architecture, system design, functional spec, test plan, sprint plan
-.github/workflows/   CI pipelines — python-ci.yml (ruff + black + pytest) · web-deploy.yml
+agentguard/          Core Python package (20+ modules)
+api/                 FastAPI REST API (40+ endpoints, JWT, RBAC, SSO)
+web/                 Next.js 14 frontend — stridemap.ai + enterprise dashboard
+dashboard/           Streamlit trace viewer (MVP)
+demo/                Runnable attack scenarios (PII_EXFIL, INJECT, UNAUTH)
+policies/            YAML policy definitions + marketplace packs
+tests/               pytest test suite — 399 tests, 82%+ coverage
+helm/                Kubernetes Helm chart
+alembic/             Database migrations
+scripts/             K8s smoke tests
 ```
 
 ---
@@ -157,77 +172,65 @@ black --check agentguard/ tests/
 # Test with coverage
 pytest tests/ --cov=agentguard --cov-fail-under=80
 
-# Test (skip slow LLM-dependent tests)
-pytest tests/ -m "not slow"
+# Run demos
+python -m demo.finance_scenario
+python -m demo.attack_scenarios
 
-# Run specific test module
-pytest tests/test_interceptor.py -v
+# Run API locally
+uvicorn api.main:app --reload
 
-# Web dev server
-cd web && npm run dev
-
-# Streamlit dashboard
-streamlit run dashboard/app.py
-
-# Verify audit chain integrity
+# Verify audit chain
 python -m agentguard verify-chain --db agentguard.db
 ```
 
-### Environment Variables
+---
 
-Copy `.env.example` to `.env` and configure:
+## Deployment
+
+### Cloud (Railway — Live)
+
+The API is deployed at `https://api-production-13f3.up.railway.app` with PostgreSQL.
+
+### Docker Compose
 
 ```bash
-AGENTGUARD_LLM_PROVIDER=ollama          # ollama | openai | anthropic
-AGENTGUARD_POLICY_PATH=policies/         # Path to YAML policy directory
-AGENTGUARD_LOG_LEVEL=INFO                # DEBUG | INFO | WARNING | ERROR
-DATABASE_URL=sqlite:///agentguard.db     # SQLite (dev) or PostgreSQL (prod)
+docker compose up -d
+# API: http://localhost:8000  |  Dashboard: http://localhost:8501
+```
+
+### Kubernetes (Helm)
+
+```bash
+helm install agentguard ./helm/agentguard -f helm/agentguard/values-prod.yaml
 ```
 
 ---
 
 ## Roadmap
 
-| Phase | Sprints | Theme | Milestone |
-|-------|---------|-------|-----------|
-| **MVP** | 1–4 | Foundation · Interceptor · Policy/DLP · Injection/Audit | Demo video + OSS launch |
-| **Governance Layer** | 5–8 | FastAPI · PostgreSQL · SIEM · PyPI v1.0 | Production REST API |
-| **Pilot Ready** | 9–12 | SSO/RBAC · Kubernetes · Next.js Dashboard | First pilot customer |
-| **Production Scale** | 13–16 | Multi-tenant · Policy Marketplace · S3 archival | v2.0-alpha PyPI |
-| **Runtime Security** | 17–24 | eBPF · seccomp · process isolation · network namespaces | v2.0 final |
-
-See [`docs/AgentGuard_Sprint_Plan_v1.md`](docs/AgentGuard_Sprint_Plan_v1.md) for the full 24-sprint breakdown.
+| Phase | Sprints | Status | Version |
+|-------|---------|--------|---------|
+| **MVP** | 1–4 | Done | — |
+| **Governance Layer** | 5–8 | Done | v1.0.0 |
+| **Pilot Ready** | 9–12 | Done | v1.5.0 |
+| **Production Scale** | 13–16 | Done | v2.0.0 |
+| **Runtime Security** | 17–24 | Future | v2.x |
 
 ---
 
 ## Contributing
 
-We welcome contributions! Here's how to get started:
+We welcome contributions! See [ONBOARDING.md](ONBOARDING.md) for setup and [COMPATIBILITY.md](COMPATIBILITY.md) for framework integration guides.
 
 1. **Fork** the repo and create a feature branch from `main`
 2. **Install** dev dependencies: `pip install -e ".[dev]"`
-3. **Write code** following the project conventions:
-   - Type hints on all functions
-   - Pydantic v2 for data models
-   - Fail-open error handling in interceptor pipeline
-   - Docstrings on public classes and methods
-4. **Write tests** — coverage must stay above 80%
-5. **Lint** before committing: `ruff check agentguard/ tests/ && black --check agentguard/ tests/`
-6. **Submit a PR** with a clear description of what and why
-
-### Commit Convention
-
-```
-<type>: <short description>
-
-<optional body — explain why, not what>
-```
-
-Types: `feat`, `fix`, `test`, `docs`, `refactor`, `ci`, `chore`
+3. **Write tests** — coverage must stay above 80%
+4. **Lint**: `ruff check agentguard/ tests/ && black --check agentguard/ tests/`
+5. **Submit a PR** with a clear description
 
 ### Reporting Issues
 
-- Security vulnerabilities: email **security@stridemap.ai** (do not open a public issue)
+- Security vulnerabilities: email **security@stridemap.ai**
 - Bugs and feature requests: [GitHub Issues](https://github.com/stridemap/agentguard/issues)
 
 ---
@@ -239,5 +242,5 @@ Types: `feat`, `fix`, `test`, `docs`, `refactor`, `ci`, `chore`
 ---
 
 <p align="center">
-  <a href="https://stridemap.ai">stridemap.ai</a> · <a href="https://github.com/stridemap/agentguard">GitHub</a> · <a href="mailto:support@stridemap.ai">support@stridemap.ai</a>
+  <a href="https://stridemap.ai">Stridemap Labs</a> · <a href="https://github.com/stridemap/agentguard">GitHub</a> · <a href="mailto:support@stridemap.ai">support@stridemap.ai</a>
 </p>

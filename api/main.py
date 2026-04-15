@@ -97,7 +97,9 @@ _metrics_collector = None  # Set externally by interceptor if running in-process
 def get_store() -> EventStore:
     global _store
     if _store is None:
-        _store = EventStore(db_path=_db_path)
+        from agentguard.store_factory import create_store
+
+        _store = create_store(_db_path)
     return _store
 
 

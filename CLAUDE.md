@@ -2,11 +2,15 @@
 
 ## What is AgentGuard?
 
-AgentGuard is an open-source Python security library providing governance controls for LLM-powered AI agents. Think **"Palo Alto Prisma, but for AI agents"**. It intercepts tool calls at the LangGraph/LangChain callback layer and enforces security policies including DLP scanning, prompt injection detection, and cryptographic audit logging.
+AgentGuard is the first product from **Stridemap Labs LLC**, an AI security company. It is an open-source Python security library providing governance controls for LLM-powered AI agents. It intercepts tool calls at the LangGraph/LangChain callback layer and enforces security policies including DLP scanning, prompt injection detection, and cryptographic audit logging.
 
-**Owner**: Praveen (Stridemap.ai)
+**Company**: Stridemap Labs LLC
+**Website**: https://stridemap.ai
+**API (Live)**: https://api-production-13f3.up.railway.app
+**Dashboard**: https://stridemap.ai/dashboard
 **License**: MIT
-**Stage**: Pre-MVP (Sprint 1 of 24-week roadmap)
+**Version**: 2.0.0
+**Stage**: Production Scale (Sprints 1-16 complete, v2.0.0 released)
 
 ## Architecture Overview
 
@@ -147,20 +151,27 @@ AGENTGUARD_LOG_LEVEL=        # DEBUG | INFO | WARN | ERROR
 AGENTGUARD_POLICY_PATH=     # Path to policy YAML directory
 ```
 
-## Sprint Roadmap (Current Phase: MVP)
+## Sprint Roadmap
 
-| Phase | Sprints | Theme | Milestone |
-|-------|---------|-------|-----------|
-| **MVP** | 1-4 | Foundation, Interceptor, Policy/DLP, Injection/Audit | Demo video + OSS launch |
-| **Governance Layer** | 5-8 | FastAPI, PostgreSQL, SIEM, PyPI v1.0 | Production REST API |
-| **Pilot Ready** | 9-12 | SSO/RBAC, Kubernetes, Next.js Dashboard | First pilot customer |
-| **Production Scale** | 13-16 | Multi-tenant, Policy Marketplace, S3 archival | v2.0-alpha PyPI |
-| **Runtime Security** | 17-24 | eBPF, seccomp, process isolation | v2.0 final |
+| Phase | Sprints | Status | Version |
+|-------|---------|--------|---------|
+| **MVP** | 1-4 | Done | — |
+| **Governance Layer** | 5-8 | Done | v1.0.0 |
+| **Pilot Ready** | 9-12 | Done | v1.5.0 |
+| **Production Scale** | 13-16 | Done | v2.0.0 |
+| **Runtime Security** | 17-24 | Future | v2.x |
 
-## Key PRD References
+## Live Deployment
 
-- **PRD**: `docs/AgentGuard_PRD_v1.pdf` — Vision, personas, requirements (AM-*, PE-*, DLP-*, PI-*, AC-*)
-- **Architecture**: `docs/AgentGuard_System_Architecture_v1.pdf` — 8-layer stack, component interactions
+- **Website**: https://stridemap.ai (Vercel)
+- **Dashboard**: https://stridemap.ai/dashboard (Vercel)
+- **API**: https://api-production-13f3.up.railway.app (Railway + PostgreSQL)
+- **API Docs**: https://api-production-13f3.up.railway.app/docs
+
+## Key PRD References (local docs/ folder, not committed to git)
+
+- **PRD**: `docs/AgentGuard_PRD_v1.pdf` — Vision, personas, requirements
+- **Architecture**: `docs/AgentGuard_System_Architecture_v1.pdf` — 8-layer stack
 - **System Design**: `docs/AgentGuard_System_Design_v1.pdf` — Data flows, API contracts
 - **Functional Spec**: `docs/AgentGuard_Functional_Spec_v1.pdf` — Use cases UC-01 through UC-08
 - **Test Plan**: `docs/AgentGuard_Test_Plan_v1.pdf` — Testing strategy per module

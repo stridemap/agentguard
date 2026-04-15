@@ -1,6 +1,12 @@
 # AgentGuard — Pilot Customer Onboarding Guide
 
+A product by [Stridemap Labs LLC](https://stridemap.ai) — AI Security for the Enterprise.
+
 5-minute setup to govern your AI agents with AgentGuard.
+
+**Live API**: https://api-production-13f3.up.railway.app
+**Dashboard**: https://stridemap.ai/dashboard
+**API Docs**: https://api-production-13f3.up.railway.app/docs
 
 ---
 

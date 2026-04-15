@@ -1,5 +1,9 @@
 # AgentGuard — Performance Benchmarks
 
+A product by [Stridemap Labs LLC](https://stridemap.ai) — AI Security for the Enterprise.
+
+**Live API**: https://api-production-13f3.up.railway.app
+
 ## SLA Targets
 
 | Operation | p50 | p95 | p99 | Sustained |

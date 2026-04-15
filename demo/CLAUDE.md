@@ -1,16 +1,18 @@
 # demo/ — Attack Scenario Demonstrations
 
+Part of [AgentGuard](https://stridemap.ai) by Stridemap Labs LLC.
+
 ## Overview
 
-Runnable demo scripts showing AgentGuard protecting AI agents from real-world attack scenarios. Each demo is self-contained, uses mock agents (no real LLM calls needed), and produces colored terminal output + SQLite event logs.
+Runnable demo scripts showing AgentGuard protecting AI agents from real-world attack scenarios. Each demo is self-contained, uses mock agents (no real LLM calls needed), and produces terminal output + SQLite event logs.
 
 ## Demo Files
 
-| File | Scenario | Sprint | OWASP |
-|------|----------|--------|-------|
-| `finance_scenario.py` | 3-agent finance system (EmailReader, CRM, ResponseWriter) | 2 | - |
-| `healthcare_scenario.py` | 3-agent healthcare system (PHI exfiltration blocked) | 3 | LLM06 |
-| `attack_scenarios.py` | 3 named enterprise attacks (PII_EXFIL, INJECT, UNAUTH) | 4 | LLM01, LLM06, LLM08 |
+| File | Scenario | OWASP |
+|------|----------|-------|
+| `finance_scenario.py` | 3-agent finance system (EmailReader, CRM, ResponseWriter) — 9 tool calls, 6 risk-flagged | — |
+| `healthcare_scenario.py` | 3-agent healthcare system (PHI exfiltration BLOCKED by policy + DLP) | LLM06 |
+| `attack_scenarios.py` | 3 enterprise attacks: PII_EXFIL (DLP blocks SSN), INJECT (injection detected), UNAUTH (policy blocks) | LLM01, LLM06, LLM08 |
 
 ## Running Demos
 

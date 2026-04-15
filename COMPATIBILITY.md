@@ -1,5 +1,7 @@
 # AgentGuard — Agent Framework Compatibility Guide
 
+A product by [Stridemap Labs LLC](https://stridemap.ai) — AI Security for the Enterprise.
+
 AgentGuard works with any LLM agent framework that supports callback handlers. Here's how to integrate with the most popular frameworks.
 
 ---

@@ -1,9 +1,12 @@
 # AgentGuard — Test Plan
 
+A product by [Stridemap Labs LLC](https://stridemap.ai) — AI Security for the Enterprise.
+
 ## Overview
 
 This document defines the testing strategy, coverage targets, and acceptance criteria for each AgentGuard module. Tests are written using `pytest` and live in the `tests/` directory.
 
+**Current status**: 399 tests, 82%+ coverage (v2.0.0)
 **Coverage gate**: 80% minimum (enforced by CI via `--cov-fail-under=80`)
 
 ---

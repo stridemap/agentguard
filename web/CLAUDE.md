@@ -1,10 +1,15 @@
 # web/ — Next.js 14 Frontend
 
+Part of [Stridemap Labs](https://stridemap.ai) — AI Security for the Enterprise.
+
 ## Overview
 
 Next.js 14 App Router application serving two purposes:
-1. **Sprint 1**: Public landing page at stridemap.ai (marketing + early access)
-2. **Sprint 11+**: Enterprise dashboard with WebSocket real-time feed and RBAC
+1. **stridemap.ai homepage**: Stridemap Labs company page with AgentGuard as first product
+2. **Enterprise dashboard** (`/dashboard/*`): Live feed, audit viewer, policy manager, compliance reports, RBAC-gated views
+
+**Live**: https://stridemap.ai (Vercel)
+**API**: https://api-production-13f3.up.railway.app
 
 ## Tech Stack
 

@@ -1,20 +1,35 @@
-# agentguard/ — Python Core Library
+# agentguard/ — Python Core Library (v2.0.0)
+
+Part of [AgentGuard](https://stridemap.ai) by Stridemap Labs LLC.
 
 ## Overview
 
-This is the main Python package providing AI agent governance. All security modules live here.
+This is the main Python package (20+ modules) providing AI agent governance.
 
 ## Module Map
 
-| Module | Purpose | Sprint | PRD Refs |
-|--------|---------|--------|----------|
-| `interceptor.py` | LangGraph BaseCallbackHandler — intercepts on_tool_start/on_tool_end | 2 | AM-01 to AM-09 |
-| `event_store.py` | Append-only SQLite event store + SHA-256 audit chain | 2, 4 | AC-01 to AC-06 |
-| `policy_engine.py` | YAML policy rule loader and evaluator | 3 | PE-01 to PE-07 |
-| `dlp_scanner.py` | Microsoft Presidio PII detection (100% local) | 3 | DLP-01 to DLP-06 |
-| `injection_detector.py` | Two-stage prompt injection detection (regex + LLM) | 4 | PI-01 to PI-06 |
-| `llm_client.py` | Provider-agnostic LLM abstraction (Ollama/OpenAI/Anthropic) | 4 | - |
-| `models.py` | Pydantic v2 data models shared across modules | All | - |
+| Module | Purpose | Status |
+|--------|---------|--------|
+| `interceptor.py` | LangGraph BaseCallbackHandler — on_tool_start/end, risk detection, policy/DLP/injection pipeline | Complete |
+| `event_store.py` | Append-only SQLite/PostgreSQL store + SHA-256 audit chain + async queue | Complete |
+| `policy_engine.py` | YAML policy engine v2 — regex conditions, AND/OR logic, hot-reload | Complete |
+| `dlp_scanner.py` | Microsoft Presidio PII detection — 15+ entities, 100% local | Complete |
+| `injection_detector.py` | Two-stage detection — 23 regex patterns + LLM classifier | Complete |
+| `llm_client.py` | Provider-agnostic LLM abstraction (Ollama/OpenAI/Anthropic/Mock) | Complete |
+| `models.py` | Pydantic v2 data models (AgentEvent, InterceptorConfig, RiskFlag, etc.) | Complete |
+| `logging.py` | Loguru structured JSON logging | Complete |
+| `metrics.py` | Prometheus-compatible metrics (5 core metrics) | Complete |
+| `siem.py` | CEF webhook client (Splunk/Datadog) + alert webhooks | Complete |
+| `federation.py` | Multi-agent federation, trace sessions, call graphs | Complete |
+| `marketplace.py` | Policy pack discovery and installation | Complete |
+| `multi_tenant.py` | Multi-tenant organization isolation + billing | Complete |
+| `archival.py` | S3/GCS/local audit archival | Complete |
+| `compliance/` | SOC2/HIPAA/ISO report generators + data retention | Complete |
+| `sdk_adapters.py` | Native OpenAI/Anthropic SDK adapters | Complete |
+| `eval_harness.py` | Injection detection evaluation (precision/recall) | Complete |
+| `store_factory.py` | SQLite/PostgreSQL storage abstraction factory | Complete |
+| `pg_store.py` | PostgreSQL event store backend | Complete |
+| `redis_queue.py` | Redis-backed event queue | Complete |
 
 ## Coding Rules
 

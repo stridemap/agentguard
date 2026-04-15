@@ -1,6 +1,8 @@
 # AgentGuard — Claude Code Skills Reference
 
-This document defines reusable Claude Code workflows for common development tasks in the AgentGuard project.
+A product by [Stridemap Labs LLC](https://stridemap.ai) — AI Security for the Enterprise.
+
+This document defines reusable Claude Code workflows for common development tasks in the AgentGuard project (v2.0.0, 399 tests, 20+ modules).
 
 ---
 

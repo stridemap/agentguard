@@ -1,5 +1,7 @@
 # AgentGuard — Migration Guide
 
+A product by [Stridemap Labs LLC](https://stridemap.ai) — AI Security for the Enterprise.
+
 ## Upgrading from v1.5 to v2.0
 
 ### Breaking Changes

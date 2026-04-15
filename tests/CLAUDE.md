@@ -2,7 +2,10 @@
 
 ## Overview
 
-pytest test suite for the AgentGuard Python package. Coverage minimum: **80%** (enforced by CI).
+pytest test suite for the AgentGuard Python package by [Stridemap Labs LLC](https://stridemap.ai).
+
+**Current status**: 399 tests, 82%+ coverage (v2.0.0)
+**Coverage minimum**: 80% (enforced by CI)
 
 ## Running Tests
 

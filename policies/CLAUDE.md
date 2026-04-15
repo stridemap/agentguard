@@ -1,16 +1,28 @@
 # policies/ — YAML Policy Definitions
 
+Part of [AgentGuard](https://stridemap.ai) by Stridemap Labs LLC.
+
 ## Overview
 
 Policy-as-Code definitions for AgentGuard's rule engine. Each YAML file contains a list of rules that govern agent tool-call behavior. These files are version-controlled alongside agent code and peer-reviewed like application config.
 
 ## Policy Files
 
-| File | Purpose | Sprint |
-|------|---------|--------|
-| `default.yaml` | 10 enterprise baseline rules (apply to all environments) | 3 |
-| `finance.yaml` | Financial sector rules (PCI-DSS, SOX compliance) | 3 |
-| `healthcare.yaml` | Healthcare/HIPAA rules (PHI protection) | 3 |
+| File | Purpose | Rules |
+|------|---------|-------|
+| `default.yaml` | 10 enterprise baseline rules (apply to all environments) | 10 |
+| `finance.yaml` | Financial sector rules (PCI-DSS, SOX compliance) | 5 |
+| `healthcare.yaml` | Healthcare/HIPAA rules (PHI protection) | 5 |
+
+## Marketplace Packs (policies/marketplace/)
+
+| Pack | Industry | Rules |
+|------|----------|-------|
+| `finance/pci_dss.yaml` | PCI-DSS v4.0 | 4 |
+| `finance/sox_compliance.yaml` | SOX | 3 |
+| `healthcare/hipaa_phi.yaml` | HIPAA | 5 |
+| `legal/privilege.yaml` | Attorney-client privilege | 4 |
+| `it/security_ops.yaml` | IT Security Operations | 5 |
 
 ## Rule Schema
 
