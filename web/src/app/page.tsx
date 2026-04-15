@@ -209,7 +209,7 @@ function Products() {
           <div className="flex flex-col gap-8 lg:flex-row lg:items-center">
             <div className="flex-1">
               <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-accent/10 px-3 py-1 text-xs font-bold uppercase tracking-wider text-accent">
-                Now Available
+                Fall 2026
               </div>
               <h3 className="mb-3 text-2xl font-bold">
                 <ShieldIcon className="mr-2 inline h-7 w-7 text-accent" />
@@ -299,19 +299,19 @@ function Products() {
               icon: "🔍",
               name: "AgentWatch",
               description: "Real-time observability and anomaly detection for multi-agent systems. Monitor agent behavior at scale.",
-              status: "Coming 2026",
+              status: "Winter 2026",
             },
             {
               icon: "🧪",
               name: "AgentTest",
               description: "Automated red-teaming and adversarial testing for AI agents. Find vulnerabilities before attackers do.",
-              status: "Coming 2026",
+              status: "Spring 2027",
             },
             {
               icon: "🔐",
               name: "AgentVault",
               description: "Secrets management and credential rotation for AI agents. Zero-trust access to APIs and databases.",
-              status: "In Research",
+              status: "Fall 2027",
             },
           ].map((p) => (
             <div
