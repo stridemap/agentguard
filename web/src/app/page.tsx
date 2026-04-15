@@ -164,8 +164,8 @@ function WhyStridemap() {
             AI Agents Need a Security Layer
           </h2>
           <p className="mx-auto max-w-2xl text-text-secondary">
-            We&apos;re building the Palo Alto Networks for the AI agent era —
-            infrastructure that makes autonomous AI safe for enterprise deployment.
+            We&apos;re building the security infrastructure that makes
+            autonomous AI safe for enterprise deployment.
           </p>
         </div>
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
