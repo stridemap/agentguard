@@ -55,7 +55,7 @@ INSERT INTO events (
     event_id, timestamp, agent_id, session_id, tool_name,
     run_id, parent_run_id, input_hash, output_hash,
     latency_ms, risk_flags, policy_result, prev_hash, event_hash
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 ON CONFLICT (event_id) DO NOTHING
 """
 
