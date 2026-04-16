@@ -1,6 +1,7 @@
 /**
  * AgentGuard API client for the Next.js dashboard.
  * Talks to the FastAPI backend at NEXT_PUBLIC_API_URL.
+ * Persists auth token in localStorage for cross-page navigation.
  */
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -50,9 +51,23 @@ class ApiClient {
   private token: string = "";
   private role: Role = "viewer";
 
+  constructor() {
+    // Restore token from localStorage on init
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("agentguard_token");
+      const savedRole = localStorage.getItem("agentguard_role");
+      if (saved) this.token = saved;
+      if (savedRole) this.role = savedRole as Role;
+    }
+  }
+
   setToken(token: string, role: Role) {
     this.token = token;
     this.role = role;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("agentguard_token", token);
+      localStorage.setItem("agentguard_role", role);
+    }
   }
 
   getRole(): Role {
@@ -61,6 +76,15 @@ class ApiClient {
 
   isAuthenticated(): boolean {
     return !!this.token;
+  }
+
+  logout() {
+    this.token = "";
+    this.role = "viewer";
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("agentguard_token");
+      localStorage.removeItem("agentguard_role");
+    }
   }
 
   private headers(): HeadersInit {
@@ -97,7 +121,10 @@ class ApiClient {
       headers: this.headers(),
       body: JSON.stringify({ limit: 100, ...filters }),
     });
-    if (!res.ok) throw new Error(`Events query failed: ${res.status}`);
+    if (!res.ok) {
+      if (res.status === 401) this.logout();
+      return [];
+    }
     return res.json();
   }
 

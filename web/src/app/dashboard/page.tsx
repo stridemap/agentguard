@@ -124,9 +124,19 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {!api.isAuthenticated() && (
+        <div className="mb-4 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
+          Not authenticated. Go to{" "}
+          <a href="/dashboard/settings" className="font-semibold underline">
+            Settings
+          </a>{" "}
+          and enter your API key: <code className="rounded bg-surface-overlay px-1.5 py-0.5 text-xs">stridemap-admin-2026</code>
+        </div>
+      )}
+
       {error && (
         <div className="mb-4 rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
-          {error}. Make sure the API is running and you&apos;re authenticated.
+          {error}
         </div>
       )}
 
