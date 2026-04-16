@@ -266,6 +266,57 @@ def query_events(
     return filtered
 
 
+# ── 4b. POST /events/ingest (admin — demo/testing) ──────────────────
+
+
+class IngestEvent(BaseModel):
+    agent_id: str = "demo-agent"
+    session_id: str = "demo-session"
+    tool_name: str = "demo_tool"
+    input_str: str = ""
+    output_str: str = ""
+    latency_ms: float = 5.0
+    risk_flags: list[str] = Field(default_factory=list)
+    policy_result: str = "ALLOW"
+
+
+@app.post("/events/ingest", tags=["Events"])
+def ingest_event(
+    event: IngestEvent,
+    _user: Annotated[TokenPayload, Depends(require_role("admin"))] = None,
+) -> dict[str, Any]:
+    """Ingest a tool-call event directly into the store (admin only).
+
+    Used for demos and testing. Creates a full AgentEvent with hashing
+    and appends it to the audit chain.
+    """
+    from uuid import uuid4
+
+    from agentguard.models import AgentEvent
+
+    ag_event = AgentEvent(
+        agent_id=event.agent_id,
+        session_id=event.session_id,
+        tool_name=event.tool_name,
+        run_id=uuid4(),
+        input_str=event.input_str,
+        input_hash=AgentEvent.compute_hash(event.input_str),
+    )
+    ag_event.finalize(output=event.output_str, latency_ms=event.latency_ms)
+    ag_event.risk_flags = event.risk_flags
+    ag_event.policy_result = event.policy_result
+
+    store = get_store()
+    store.append(ag_event)
+
+    return {
+        "status": "ingested",
+        "event_id": str(ag_event.event_id),
+        "tool_name": ag_event.tool_name,
+        "policy_result": ag_event.policy_result,
+    }
+
+
 # ── 5. GET /events/{event_id} (authenticated) ───────────────────────
 
 
