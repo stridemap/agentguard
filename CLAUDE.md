@@ -2,13 +2,13 @@
 
 ## What is AgentGuard?
 
-AgentGuard is the first product from **Stridemap Labs LLC**, an AI security company. It is an open-source Python security library providing governance controls for LLM-powered AI agents. It intercepts tool calls at the LangGraph/LangChain callback layer and enforces security policies including DLP scanning, prompt injection detection, and cryptographic audit logging.
+AgentGuard is the first product from **Stridemap Labs LLC**, an AI security company. It is a proprietary Python security library providing governance controls for LLM-powered AI agents. It intercepts tool calls at the LangGraph/LangChain callback layer and enforces security policies including DLP scanning, prompt injection detection, and cryptographic audit logging.
 
 **Company**: Stridemap Labs LLC
 **Website**: https://stridemap.ai
 **API (Live)**: https://api-production-13f3.up.railway.app
 **Dashboard**: https://stridemap.ai/dashboard
-**License**: MIT
+**License**: Proprietary (Stridemap Labs LLC)
 **Version**: 2.0.0
 **Stage**: Production Scale (Sprints 1-16 complete, v2.0.0 released)
 

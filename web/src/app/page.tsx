@@ -199,7 +199,7 @@ function Products() {
             Security Infrastructure for AI Agents
           </h2>
           <p className="mx-auto max-w-2xl text-text-secondary">
-            Open-source tools that give enterprises full visibility and control
+            Purpose-built tools that give enterprises full visibility and control
             over their AI agent deployments.
           </p>
         </div>
@@ -216,7 +216,7 @@ function Products() {
                 AgentGuard
               </h3>
               <p className="mb-4 text-text-secondary">
-                The open-source governance layer for LLM-powered AI agents.
+                The governance layer for LLM-powered AI agents.
                 Intercepts every tool call and enforces security policies — DLP scanning,
                 prompt injection detection, and tamper-proof audit logging —
                 without changing a single line of agent code.
@@ -477,7 +477,7 @@ function Footer() {
             </div>
             <p className="mt-2 max-w-xs text-sm text-text-secondary">
               AI security infrastructure for the enterprise.
-              Open source. Built for production.
+              Built for enterprise. Built for production.
             </p>
           </div>
           <div className="flex gap-12 text-sm">

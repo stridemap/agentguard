@@ -4,7 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Stridemap Labs — Securing the Agentic Frontier",
   description:
-    "Stridemap Labs builds security infrastructure for the AI agent era. AgentGuard: open-source governance, DLP, injection detection, and audit logging for LLM-powered agents.",
+    "Stridemap Labs builds security infrastructure for the AI agent era. AgentGuard: governance, DLP, injection detection, and audit logging for LLM-powered agents.",
   keywords: [
     "AI security",
     "AI agents",
@@ -16,7 +16,6 @@ export const metadata: Metadata = {
     "AgentGuard",
     "Stridemap Labs",
     "enterprise AI",
-    "open source",
   ],
   authors: [{ name: "Stridemap Labs", url: "https://stridemap.ai" }],
   openGraph: {
@@ -32,7 +31,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Stridemap Labs — Securing the Agentic Frontier",
     description:
-      "AI security infrastructure for the enterprise. Open-source agent governance, DLP, injection detection, audit logging.",
+      "AI security infrastructure for the enterprise. Agent governance, DLP, injection detection, audit logging.",
   },
   metadataBase: new URL("https://stridemap.ai"),
 };

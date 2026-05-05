@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>The open-source governance layer for LLM-powered AI agents.</strong><br/>
+  <strong>The governance layer for LLM-powered AI agents.</strong><br/>
   A product by <a href="https://stridemap.ai">Stridemap Labs LLC</a> — Securing the Agentic Frontier.
 </p>
 
@@ -13,7 +13,7 @@
   <a href="https://codecov.io/gh/stridemap/agentguard"><img src="https://codecov.io/gh/stridemap/agentguard/branch/main/graph/badge.svg" alt="Coverage" /></a>
   <a href="https://pypi.org/project/agentguard/"><img src="https://img.shields.io/pypi/v/agentguard?color=00D4AA" alt="PyPI" /></a>
   <a href="https://pypi.org/project/agentguard/"><img src="https://img.shields.io/pypi/pyversions/agentguard" alt="Python Versions" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Proprietary-blue.svg" alt="License: Proprietary" /></a>
 </p>
 
 ---
@@ -237,7 +237,7 @@ We welcome contributions! See [ONBOARDING.md](ONBOARDING.md) for setup and [COMP
 
 ## License
 
-[MIT](LICENSE) — use it freely, commercially, wherever. Attribution appreciated.
+Proprietary. Copyright (c) 2026 Stridemap Labs LLC. All rights reserved. See [LICENSE](LICENSE) for details.
 
 ---
 

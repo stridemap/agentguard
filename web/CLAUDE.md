@@ -37,7 +37,7 @@ Next.js 14 App Router application serving two purposes:
 4. **How it Works**: 3 steps (pip install, wrap, deploy)
 5. **Comparison Table**: AgentGuard vs HiddenLayer vs LangSmith vs CalypsoAI
 6. **Early Access Form**: Email capture
-7. **Footer**: GitHub link, email, MIT license
+7. **Footer**: Company info, product links, contact
 
 ## Enterprise Dashboard Pages (Sprint 11+)
 

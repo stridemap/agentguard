@@ -5,9 +5,9 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "agentguard"
 version = "2.0.0"
-description = "Guardrails and policy enforcement for AI agents — the open-source governance layer for LLM-powered agents."
+description = "Guardrails and policy enforcement for AI agents — the governance layer for LLM-powered agents."
 readme = "README.md"
-license = "MIT"
+license = "LicenseRef-Proprietary"
 requires-python = ">=3.11"
 authors = [
     { name = "Stridemap", email = "hello@stridemap.ai" },
