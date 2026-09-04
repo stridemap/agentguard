@@ -4,6 +4,16 @@ import { useState } from "react";
 
 /* ─── Icons ────────────────────────────────────────────────────────── */
 
+function GatewayIcon({ className = "w-6 h-6" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
+      <path d="M4 21V8a8 8 0 0 1 16 0v13" strokeLinecap="round" />
+      <path d="M9 21v-9a3 3 0 0 1 6 0v9" strokeLinecap="round" />
+      <path d="M2 21h20" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function ShieldIcon({ className = "w-6 h-6" }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -292,41 +302,98 @@ function Products() {
           </div>
         </div>
 
-        {/* Coming soon products */}
-        <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {[
-            {
-              icon: "🔍",
-              name: "AgentWatch",
-              description: "Real-time observability and anomaly detection for multi-agent systems. Monitor agent behavior at scale.",
-              status: "Winter 2026",
-            },
-            {
-              icon: "🧪",
-              name: "AgentTest",
-              description: "Automated red-teaming and adversarial testing for AI agents. Find vulnerabilities before attackers do.",
-              status: "Spring 2027",
-            },
-            {
-              icon: "🔐",
-              name: "AgentVault",
-              description: "Secrets management and credential rotation for AI agents. Zero-trust access to APIs and databases.",
-              status: "Fall 2027",
-            },
-          ].map((p) => (
-            <div
-              key={p.name}
-              className="rounded-xl border border-border bg-surface-raised p-6 opacity-80 transition hover:opacity-100"
-            >
-              <div className="mb-3 text-2xl">{p.icon}</div>
-              <h3 className="mb-1 text-lg font-semibold">{p.name}</h3>
-              <p className="mb-3 text-sm leading-relaxed text-text-secondary">{p.description}</p>
-              <span className="rounded-full bg-surface-overlay px-3 py-1 text-xs font-medium text-text-muted">
-                {p.status}
-              </span>
+
+        {/* MiniGate — the MCP gateway */}
+        <div className="mt-8 rounded-2xl border border-accent/30 bg-surface-raised p-8 transition hover:shadow-lg hover:shadow-accent/10">
+          <div className="flex flex-col gap-8 lg:flex-row lg:items-center">
+            <div className="flex-1">
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-accent/10 px-3 py-1 text-xs font-bold uppercase tracking-wider text-accent">
+                Design Partners
+              </div>
+              <h3 className="mb-3 text-2xl font-bold">
+                <GatewayIcon className="mr-2 inline h-7 w-7 text-accent" />
+                MiniGate
+              </h3>
+              <p className="mb-4 text-text-secondary">
+                A security gateway for the Model Context Protocol — the standard by which
+                AI assistants reach outside tools. MiniGate sits between the assistant and
+                the vendor&apos;s MCP server and mediates every message in both directions.
+                Connecting an assistant to a SaaS tool is all-or-nothing today: the vendor
+                decides which tools exist and the client hands every one of them to the
+                model. MiniGate is the layer that was missing.
+              </p>
+              <ul className="mb-6 grid gap-2 text-sm text-text-secondary sm:grid-cols-2">
+                {[
+                  "Policy per tool call, before the vendor sees it",
+                  "Tool definition pinning — catches silent changes",
+                  "Injection scanning on results and descriptions",
+                  "Local PII redaction — nothing leaves the machine",
+                  "Data lineage across chained calls",
+                  "Tamper-evident SHA-256 audit chain",
+                ].map((f) => (
+                  <li key={f} className="flex items-start gap-2">
+                    <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+                    {f}
+                  </li>
+                ))}
+              </ul>
+              <p className="mb-6 text-sm text-text-muted">
+                Runs as a local shim or a hosted gateway. No model-channel access, no TLS
+                interception, no credential custody — OAuth is relayed, never minted.
+                Powered by AgentGuard.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <a
+                  href="#early-access"
+                  className="inline-flex items-center gap-2 rounded-lg bg-accent px-6 py-2.5 text-sm font-semibold text-surface transition hover:bg-accent-light"
+                >
+                  Become a design partner
+                  <ArrowRightIcon className="h-4 w-4" />
+                </a>
+              </div>
             </div>
-          ))}
+            <div className="lg:w-[400px]">
+              <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-2xl shadow-black/40">
+                <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+                  <span className="h-3 w-3 rounded-full bg-red-500/80" />
+                  <span className="h-3 w-3 rounded-full bg-yellow-500/80" />
+                  <span className="h-3 w-3 rounded-full bg-green-500/80" />
+                  <span className="ml-2 text-xs text-text-muted">minigate.yaml</span>
+                </div>
+                <pre className="overflow-x-auto p-5 text-sm leading-relaxed">
+                  <code>
+                    <span className="text-text-muted">{"# Policy as code, reviewed like any other config\n"}</span>
+                    <span className="text-blue-400">rules</span>
+                    <span className="text-text-muted">:</span>
+                    {"\n  - "}
+                    <span className="text-blue-400">id</span>
+                    <span className="text-text-muted">: </span>
+                    <span className="text-accent">MG-010</span>
+                    {"\n    "}
+                    <span className="text-blue-400">name</span>
+                    <span className="text-text-muted">: </span>
+                    <span className="text-text-primary">Block deletion across all servers</span>
+                    {"\n    "}
+                    <span className="text-blue-400">conditions</span>
+                    <span className="text-text-muted">:</span>
+                    {"\n      "}
+                    <span className="text-blue-400">tool_name</span>
+                    <span className="text-text-muted">: </span>
+                    <span className="text-green-400">{'".*\\.(delete|remove|drop).*"'}</span>
+                    {"\n    "}
+                    <span className="text-blue-400">action</span>
+                    <span className="text-text-muted">: </span>
+                    <span className="text-red-400">BLOCK</span>
+                    {"\n\n"}
+                    <span className="text-text-muted">{"# 57 tools offered by the vendor\n"}</span>
+                    <span className="text-text-muted">{"# 36 reach the model"}</span>
+                  </code>
+                </pre>
+              </div>
+            </div>
+          </div>
         </div>
+
       </div>
     </section>
   );
@@ -484,9 +551,8 @@ function Footer() {
             <div>
               <p className="mb-3 font-semibold text-text-primary">Products</p>
               <ul className="space-y-2 text-text-secondary">
-                <li><a href="https://github.com/stridemap/agentguard" className="transition hover:text-accent">AgentGuard</a></li>
-                <li><span className="text-text-muted">AgentWatch (soon)</span></li>
-                <li><span className="text-text-muted">AgentTest (soon)</span></li>
+                <li><a href="#agentguard" className="transition hover:text-accent">AgentGuard</a></li>
+                <li><a href="#products" className="transition hover:text-accent">MiniGate</a></li>
               </ul>
             </div>
             <div>
