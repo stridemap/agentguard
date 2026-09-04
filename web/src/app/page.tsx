@@ -58,7 +58,7 @@ function Navbar() {
         </a>
         <div className="hidden items-center gap-8 text-sm text-text-secondary md:flex">
           <a href="#products" className="transition hover:text-text-primary">Products</a>
-          <a href="#why" className="transition hover:text-text-primary">Why Stridemap</a>
+          <a href="#use-cases" className="transition hover:text-text-primary">Use Cases</a>
           <a href="#agentguard" className="transition hover:text-text-primary">How it works</a>
           <a href="#early-access" className="transition hover:text-text-primary">Early Access</a>
         </div>
@@ -354,6 +354,92 @@ function Products() {
   );
 }
 
+/* ─── Use Cases ────────────────────────────────────────────────────── */
+
+const useCases = [
+  {
+    tag: "Least privilege",
+    title: "Shrink a connector to what you meant",
+    body: "Linear's MCP server ships 57 tools, four of which delete things. You wanted read and comment. A policy file gets you 36 — no waiting on the vendor for finer scopes.",
+  },
+  {
+    tag: "Supply chain",
+    title: "Catch a tool that changed after you approved it",
+    body: "The name never changes, so every allowlist still says ALLOW. MiniGate hashes the whole definition at approval. Real case: Linear altered save_issue between two days in September. The diff exits non-zero, so it gates CI.",
+  },
+  {
+    tag: "Prompt injection",
+    title: "Instructions hidden in the data your agent reads",
+    body: "Anyone with your intake form URL can write into your database. A ticket saying \u201cignore previous instructions\u201d is a code path an attacker controls without touching your infrastructure. Scanned on the way back, after policy already said the call was fine.",
+  },
+  {
+    tag: "Data protection",
+    title: "Minimise before it reaches a third-party model",
+    body: "Names, emails and card numbers are redacted in flight; an SSN refuses the call outright, because redaction is the wrong answer when the data should not be in play. Scanning runs locally — nothing leaves the machine to be classified.",
+  },
+  {
+    tag: "Exfiltration",
+    title: "The breach that is a sequence, not a call",
+    body: "Read from the CRM: allowed. Post to the public tracker: allowed. In that order it is a breach. Every allowlist and DLP appliance evaluates one request at a time, so the information is never in front of them.",
+  },
+  {
+    tag: "Coverage",
+    title: "Govern agents whose code you do not own",
+    body: "SDK callbacks need a line in the agent. You cannot add one to Claude Desktop, Cursor, or a vendor's agent. A proxy in the protocol path does not ask the code for permission.",
+  },
+  {
+    tag: "Reverse channel",
+    title: "Stop a server spending your tokens — or phishing your users",
+    body: "MCP is bidirectional. A server can ask your client to run the model and hand back the result, or render a form to your user asking for an API key. The spec says it must not. That is an expectation, not a control.",
+  },
+  {
+    tag: "Evidence",
+    title: "Prove nobody edited the log",
+    body: "\u201cShow me what your agents did\u201d is answerable with logs. \u201cProve nobody rewrote them\u201d is not. Each event's hash covers the one before it, so any edit breaks the chain from that row on. Verification walks the whole thing in milliseconds.",
+  },
+];
+
+function UseCases() {
+  return (
+    <section id="use-cases" className="border-y border-border bg-surface-raised/30 py-24">
+      <div className="mx-auto max-w-6xl px-6">
+        <div className="mb-16 text-center">
+          <p className="mb-3 text-sm font-semibold uppercase tracking-wider text-accent">
+            Use Cases
+          </p>
+          <h2 className="mb-4 text-3xl font-bold sm:text-4xl">
+            What It Actually Stops
+          </h2>
+          <p className="mx-auto max-w-2xl text-text-secondary">
+            Every one of these is a real failure mode of connecting an AI assistant
+            to a work tool — not a hypothetical.
+          </p>
+        </div>
+        <div className="grid gap-5 sm:grid-cols-2">
+          {useCases.map((u) => (
+            <div
+              key={u.title}
+              className="rounded-xl border border-border bg-surface p-6 transition hover:border-accent/40"
+            >
+              <span className="mb-3 inline-block rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider text-accent">
+                {u.tag}
+              </span>
+              <h3 className="mb-2 text-base font-semibold">{u.title}</h3>
+              <p className="text-sm leading-relaxed text-text-secondary">{u.body}</p>
+            </div>
+          ))}
+        </div>
+        <p className="mx-auto mt-10 max-w-3xl text-center text-sm leading-relaxed text-text-muted">
+          MiniGate never sees your prompts and does not proxy the model API. Everything it
+          governs is visible in the protocol itself — which tool, with what arguments, and
+          what came back. No TLS interception, and no credentials held: OAuth is relayed,
+          never minted.
+        </p>
+      </div>
+    </section>
+  );
+}
+
 /* ─── AgentGuard Detail ────────────────────────────────────────────── */
 
 function AgentGuardDetail() {
@@ -542,6 +628,7 @@ export default function Home() {
       <Hero />
       <WhyStridemap />
       <Products />
+      <UseCases />
       <AgentGuardDetail />
       <EarlyAccess />
       <Footer />
