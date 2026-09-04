@@ -440,6 +440,80 @@ function UseCases() {
   );
 }
 
+/* ─── How You Use It ───────────────────────────────────────────────── */
+
+const steps = [
+  {
+    n: "01",
+    title: "Point your client at the gateway",
+    body: "A custom connector URL, or two lines in your MCP client config. Nothing in your agent changes — MiniGate speaks the same protocol the client already speaks.",
+    code: "https://gateway.example.com/mcp/linear",
+  },
+  {
+    n: "02",
+    title: "Write policy as code",
+    body: "YAML, in your repo, reviewed in a pull request like any other config. Rules match on tool name, data pattern, direction and destination, in priority order.",
+    code: "tool_name: \".*\\.(delete|remove|drop).*\"\naction:    BLOCK",
+  },
+  {
+    n: "03",
+    title: "Approve the tools you audited",
+    body: "One sync records what each tool looked like the day you reviewed it — the whole definition, not the name. When a vendor changes one afterwards, you find out.",
+    code: "minigate registry sync --server-name linear",
+  },
+  {
+    n: "04",
+    title: "Read the evidence",
+    body: "Every decision lands in an append-only, hash-chained record. Verification walks the whole chain and tells you whether a single row was ever altered.",
+    code: "minigate verify\n{ \"is_valid\": true, \"total_events\": 212 }",
+  },
+];
+
+function HowYouUseIt() {
+  return (
+    <section id="how" className="py-24">
+      <div className="mx-auto max-w-6xl px-6">
+        <div className="mb-16 text-center">
+          <p className="mb-3 text-sm font-semibold uppercase tracking-wider text-accent">
+            How You Use It
+          </p>
+          <h2 className="mb-4 text-3xl font-bold sm:text-4xl">
+            A Config File and a URL
+          </h2>
+          <p className="mx-auto max-w-2xl text-text-secondary">
+            No SDK to adopt and no agent code to change. MiniGate runs as a local shim
+            beside your client, or as a hosted gateway your whole team points at.
+          </p>
+        </div>
+
+        <div className="space-y-4">
+          {steps.map((s) => (
+            <div
+              key={s.n}
+              className="flex flex-col gap-5 rounded-xl border border-border bg-surface-raised p-6 sm:flex-row sm:items-center"
+            >
+              <span className="shrink-0 font-mono text-2xl font-bold text-accent/40">{s.n}</span>
+              <div className="flex-1">
+                <h3 className="mb-1.5 text-base font-semibold">{s.title}</h3>
+                <p className="text-sm leading-relaxed text-text-secondary">{s.body}</p>
+              </div>
+              <pre className="overflow-x-auto rounded-lg border border-border bg-surface px-4 py-3 font-mono text-xs leading-relaxed text-text-secondary sm:w-[330px] sm:shrink-0">
+                {s.code}
+              </pre>
+            </div>
+          ))}
+        </div>
+
+        <p className="mx-auto mt-10 max-w-3xl text-center text-sm leading-relaxed text-text-muted">
+          Faults fail open, policy fails closed. An error inside MiniGate lets the call
+          through — a security tool that breaks your agent gets uninstalled. A rule that
+          says block, blocks.
+        </p>
+      </div>
+    </section>
+  );
+}
+
 /* ─── AgentGuard Detail ────────────────────────────────────────────── */
 
 function AgentGuardDetail() {
@@ -629,6 +703,7 @@ export default function Home() {
       <WhyStridemap />
       <Products />
       <UseCases />
+      <HowYouUseIt />
       <AgentGuardDetail />
       <EarlyAccess />
       <Footer />

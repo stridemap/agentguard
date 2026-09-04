@@ -81,7 +81,8 @@ export default function SettingsPage() {
       <div className="rounded-xl border border-border bg-surface-raised p-6">
         <h2 className="mb-2 text-lg font-semibold">About</h2>
         <div className="space-y-1 text-sm text-text-secondary">
-          <p>AgentGuard v2.0.0 — Guardrails for the Agentic Frontier</p>
+          <p>MiniGate — security gateway for the Model Context Protocol</p>
+          <p>AgentGuard v2.0.0 — the governance engine it runs on</p>
           <p>
             <a href="https://stridemap.ai/#agentguard" className="text-accent hover:underline">
               Documentation
