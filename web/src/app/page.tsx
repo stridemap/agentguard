@@ -59,7 +59,7 @@ function Navbar() {
         <div className="hidden items-center gap-8 text-sm text-text-secondary md:flex">
           <a href="#products" className="transition hover:text-text-primary">Products</a>
           <a href="#why" className="transition hover:text-text-primary">Why Stridemap</a>
-          <a href="#agentguard" className="transition hover:text-text-primary">AgentGuard</a>
+          <a href="#agentguard" className="transition hover:text-text-primary">How it works</a>
           <a href="#early-access" className="transition hover:text-text-primary">Early Access</a>
         </div>
         <div className="flex items-center gap-3">
@@ -115,10 +115,10 @@ function Hero() {
 
         <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
           <a
-            href="#agentguard"
+            href="#products"
             className="inline-flex items-center gap-2 rounded-lg bg-accent px-8 py-3.5 text-base font-semibold text-surface transition hover:bg-accent-light hover:shadow-lg hover:shadow-accent/20"
           >
-            Explore AgentGuard
+            Explore MiniGate
             <ArrowRightIcon className="w-4 h-4" />
           </a>
           <a
@@ -206,105 +206,17 @@ function Products() {
             Products
           </p>
           <h2 className="mb-4 text-3xl font-bold sm:text-4xl">
-            Security Infrastructure for AI Agents
+            Govern What Your AI Agents Can Actually Do
           </h2>
           <p className="mx-auto max-w-2xl text-text-secondary">
-            Purpose-built tools that give enterprises full visibility and control
-            over their AI agent deployments.
+            Assistants now reach into Linear, Drive, Notion and everything else through
+            the Model Context Protocol. MiniGate is the control point that sits in the
+            middle of it.
           </p>
         </div>
 
-        {/* AgentGuard — featured product */}
-        <div className="rounded-2xl border border-accent/30 bg-surface-raised p-8 transition hover:shadow-lg hover:shadow-accent/10">
-          <div className="flex flex-col gap-8 lg:flex-row lg:items-center">
-            <div className="flex-1">
-              <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-accent/10 px-3 py-1 text-xs font-bold uppercase tracking-wider text-accent">
-                Fall 2026
-              </div>
-              <h3 className="mb-3 text-2xl font-bold">
-                <ShieldIcon className="mr-2 inline h-7 w-7 text-accent" />
-                AgentGuard
-              </h3>
-              <p className="mb-4 text-text-secondary">
-                The governance layer for LLM-powered AI agents.
-                Intercepts every tool call and enforces security policies — DLP scanning,
-                prompt injection detection, and tamper-proof audit logging —
-                without changing a single line of agent code.
-              </p>
-              <ul className="mb-6 grid gap-2 text-sm text-text-secondary sm:grid-cols-2">
-                {[
-                  "YAML Policy Engine (ALLOW / BLOCK / ALERT)",
-                  "Microsoft Presidio DLP (15+ PII types)",
-                  "Two-stage injection detection",
-                  "SHA-256 cryptographic audit chain",
-                  "FastAPI REST API + JWT auth",
-                  "SOC2 / HIPAA / ISO 27001 reports",
-                ].map((f) => (
-                  <li key={f} className="flex items-start gap-2">
-                    <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
-                    {f}
-                  </li>
-                ))}
-              </ul>
-              <div className="flex flex-wrap gap-3">
-                <a
-                  href="https://github.com/stridemap/agentguard"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 rounded-lg bg-accent px-6 py-2.5 text-sm font-semibold text-surface transition hover:bg-accent-light"
-                >
-                  <GitHubIcon className="h-4 w-4" />
-                  View on GitHub
-                </a>
-                <a
-                  href="/dashboard"
-                  className="inline-flex items-center gap-2 rounded-lg border border-border-light px-6 py-2.5 text-sm font-semibold text-text-primary transition hover:border-accent/50 hover:bg-surface-overlay"
-                >
-                  Dashboard Demo
-                </a>
-              </div>
-            </div>
-            <div className="lg:w-[400px]">
-              <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-2xl shadow-black/40">
-                <div className="flex items-center gap-2 border-b border-border px-4 py-3">
-                  <span className="h-3 w-3 rounded-full bg-red-500/80" />
-                  <span className="h-3 w-3 rounded-full bg-yellow-500/80" />
-                  <span className="h-3 w-3 rounded-full bg-green-500/80" />
-                  <span className="ml-2 text-xs text-text-muted">quickstart.py</span>
-                </div>
-                <pre className="overflow-x-auto p-5 text-sm leading-relaxed">
-                  <code>
-                    <span className="text-text-muted">{"# 2 lines. Zero agent code changes.\n"}</span>
-                    <span className="text-purple-400">from</span>
-                    <span className="text-text-primary"> agentguard </span>
-                    <span className="text-purple-400">import</span>
-                    <span className="text-accent"> AgentGuardInterceptor</span>
-                    {"\n\n"}
-                    <span className="text-text-primary">config </span>
-                    <span className="text-text-muted">= </span>
-                    <span className="text-text-primary">{"{"}</span>
-                    <span className="text-green-400">{'"callbacks"'}</span>
-                    <span className="text-text-muted">: </span>
-                    <span className="text-text-primary">[</span>
-                    <span className="text-accent">AgentGuardInterceptor</span>
-                    <span className="text-text-primary">()]{"}"}</span>
-                    {"\n"}
-                    <span className="text-text-primary">agent</span>
-                    <span className="text-text-muted">.</span>
-                    <span className="text-blue-400">invoke</span>
-                    <span className="text-text-primary">(input, config</span>
-                    <span className="text-text-muted">=</span>
-                    <span className="text-text-primary">config)</span>
-                  </code>
-                </pre>
-              </div>
-            </div>
-          </div>
-        </div>
-
-
         {/* MiniGate — the MCP gateway */}
-        <div className="mt-8 rounded-2xl border border-accent/30 bg-surface-raised p-8 transition hover:shadow-lg hover:shadow-accent/10">
+        <div className="rounded-2xl border border-accent/30 bg-surface-raised p-8 transition hover:shadow-lg hover:shadow-accent/10">
           <div className="flex flex-col gap-8 lg:flex-row lg:items-center">
             <div className="flex-1">
               <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-accent/10 px-3 py-1 text-xs font-bold uppercase tracking-wider text-accent">
@@ -394,6 +306,49 @@ function Products() {
           </div>
         </div>
 
+        {/* AgentGuard — the engine, deliberately understated */}
+        <div className="mt-6 rounded-xl border border-border bg-surface-raised/60 p-6">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+            <div className="flex-1">
+              <div className="mb-2 flex items-center gap-3">
+                <ShieldIcon className="h-5 w-5 text-text-muted" />
+                <h3 className="text-lg font-semibold text-text-primary">AgentGuard</h3>
+                <span className="rounded-full bg-surface-overlay px-2.5 py-0.5 text-xs font-medium text-text-muted">
+                  Engine
+                </span>
+              </div>
+              <p className="mb-4 text-sm leading-relaxed text-text-secondary">
+                The governance library MiniGate runs on — policy evaluation, local PII
+                detection, prompt-injection scanning and the cryptographic audit chain.
+                It is also embeddable directly in a LangGraph or LangChain agent for teams
+                who want the controls without a gateway in front.
+              </p>
+              <ul className="grid gap-1.5 text-sm text-text-muted sm:grid-cols-2">
+                {[
+                  "YAML policy engine",
+                  "Microsoft Presidio DLP",
+                  "Two-stage injection detection",
+                  "SHA-256 audit chain",
+                ].map((f) => (
+                  <li key={f} className="flex items-start gap-2">
+                    <CheckIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-muted" />
+                    {f}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="lg:w-[320px] lg:shrink-0">
+              <a
+                href="#agentguard"
+                className="inline-flex items-center gap-2 text-sm font-medium text-text-secondary transition hover:text-accent"
+              >
+                How the five modules fit together
+                <ArrowRightIcon className="h-4 w-4" />
+              </a>
+            </div>
+          </div>
+        </div>
+
       </div>
     </section>
   );
@@ -407,11 +362,16 @@ function AgentGuardDetail() {
       <div className="mx-auto max-w-6xl px-6">
         <div className="mb-16 text-center">
           <p className="mb-3 text-sm font-semibold uppercase tracking-wider text-accent">
-            AgentGuard
+            How it works
           </p>
           <h2 className="mb-4 text-3xl font-bold sm:text-4xl">
-            Five Modules. One Governance Layer.
+            Five Modules Behind Every Decision
           </h2>
+          <p className="mx-auto mt-4 max-w-2xl text-text-secondary">
+            Every message MiniGate mediates passes through these. They are AgentGuard,
+            the library underneath — usable on their own if you would rather embed the
+            controls than run a gateway.
+          </p>
         </div>
 
         <div className="mx-auto max-w-3xl space-y-3">
@@ -551,8 +511,8 @@ function Footer() {
             <div>
               <p className="mb-3 font-semibold text-text-primary">Products</p>
               <ul className="space-y-2 text-text-secondary">
-                <li><a href="#agentguard" className="transition hover:text-accent">AgentGuard</a></li>
                 <li><a href="#products" className="transition hover:text-accent">MiniGate</a></li>
+                <li><a href="#agentguard" className="transition hover:text-accent">AgentGuard</a></li>
               </ul>
             </div>
             <div>

@@ -57,9 +57,12 @@ dashboard/.streamlit/secrets.toml
 *.sqlite3
 
 # ── Docs (private — not published to GitHub) ──────
-docs/
+# ADRs are the exception: decision records must be version-controlled.
+docs/*
+!docs/adr/
 
 # ── Misc ───────────────────────────────────────────
 *.log
 *.bak
 *.tmp
+web/tsconfig.tsbuildinfo

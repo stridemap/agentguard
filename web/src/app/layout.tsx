@@ -4,7 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Stridemap Labs — Securing the Agentic Frontier",
   description:
-    "Stridemap Labs builds security infrastructure for the AI agent era. AgentGuard: governance, DLP, injection detection, and audit logging for LLM-powered agents.",
+    "Stridemap Labs builds security infrastructure for the AI agent era. MiniGate: a security gateway for the Model Context Protocol — policy, injection scanning, PII redaction and tamper-evident audit for every tool an AI assistant reaches.",
   keywords: [
     "AI security",
     "AI agents",
@@ -13,6 +13,9 @@ export const metadata: Metadata = {
     "guardrails",
     "DLP",
     "prompt injection",
+    "MiniGate",
+    "Model Context Protocol",
+    "MCP security",
     "AgentGuard",
     "Stridemap Labs",
     "enterprise AI",
