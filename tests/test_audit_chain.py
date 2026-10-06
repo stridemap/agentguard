@@ -11,6 +11,7 @@ Covers:
 from __future__ import annotations
 
 import sqlite3
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -194,6 +195,59 @@ class TestTamperDetection:
 # ── CLI verify-chain test ────────────────────────────────────────────
 
 
+class TestChainResume:
+    """Regression: EventStore must resume _last_hash from disk on init.
+
+    Without this, opening a fresh EventStore against an existing DB and
+    appending writes the next event with prev_hash=GENESIS, breaking the
+    chain at that exact row. This matters for multi-worker deployments
+    and any caller that reconstructs an EventStore mid-lifecycle.
+    """
+
+    def test_append_after_reopen_preserves_chain(self, tmp_path):
+        db_path = str(tmp_path / "resume.db")
+
+        # First process: write 3 events with one store, close it.
+        s1 = EventStore(db_path=db_path)
+        for _ in range(3):
+            s1.append(make_event())
+        s1.close()
+
+        # Second process: fresh store against the same DB, append more.
+        s2 = EventStore(db_path=db_path)
+        for _ in range(2):
+            s2.append(make_event())
+        result = s2.verify_chain()
+        s2.close()
+
+        assert result["is_valid"] is True
+        assert result["total_events"] == 5
+        assert result["first_tampered_event_id"] is None
+
+    def test_resume_on_empty_db_starts_from_genesis(self, tmp_path):
+        db_path = str(tmp_path / "fresh.db")
+        s = EventStore(db_path=db_path)
+        try:
+            assert s._last_hash == EventStore._GENESIS_HASH
+            s.append(make_event())
+            assert s.verify_chain()["is_valid"] is True
+        finally:
+            s.close()
+
+    def test_three_sequential_reopens_keep_chain_valid(self, tmp_path):
+        db_path = str(tmp_path / "loop.db")
+        for _ in range(3):
+            s = EventStore(db_path=db_path)
+            s.append(make_event())
+            s.close()
+
+        s = EventStore(db_path=db_path)
+        result = s.verify_chain()
+        s.close()
+        assert result["is_valid"] is True
+        assert result["total_events"] == 3
+
+
 class TestVerifyChainCLI:
     def test_cli_valid_chain(self, tmp_path):
         """python -m agentguard verify-chain exits 0 on valid chain."""
@@ -235,3 +289,101 @@ class TestVerifyChainCLI:
         )
         assert result.returncode == 1
         assert "broken" in result.stdout.lower() or "tamper" in result.stdout.lower()
+
+
+# ── concurrent writers ───────────────────────────────────────────────
+
+
+def test_chain_survives_concurrent_stores_sharing_one_database(tmp_path):
+    """Regression: several EventStore instances writing to one database must produce
+    a single valid chain.
+
+    Found in the field. An MCP client that maintains a process pool starts the gateway
+    more than once, each process constructs its own EventStore, each resumes the same
+    chain tip, and two appends then claim the same predecessor — forking the chain and
+    making verify_chain() report tampering on a log nobody touched. A false positive
+    here is worse than no check at all, so the tip is now read inside the write
+    transaction rather than from in-memory state.
+    """
+    import threading
+    from uuid import uuid4
+
+    db_path = str(tmp_path / "concurrent.db")
+
+    def writer(tag: str) -> None:
+        store = EventStore(db_path=db_path)  # a separate store == a separate process
+        for i in range(25):
+            store.append(AgentEvent(tool_name=f"{tag}.tool{i}", run_id=uuid4()))
+        store.close()
+
+    threads = [threading.Thread(target=writer, args=(f"proc{n}",)) for n in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    verifying_store = EventStore(db_path=db_path)
+    result = verifying_store.verify_chain()
+
+    assert result["total_events"] == 100
+    assert result["is_valid"] is True, (
+        f"chain forked at {result['first_tampered_event_id']} — "
+        "concurrent appends claimed the same predecessor"
+    )
+
+    # and every link genuinely points at the row before it
+    conn = verifying_store._get_conn()
+    rows = conn.execute("SELECT prev_hash, event_hash FROM events ORDER BY rowid").fetchall()
+    for previous, current in zip(rows, rows[1:], strict=False):
+        assert current[0] == previous[1]
+    verifying_store.close()
+
+
+def test_a_second_store_resumes_the_chain_rather_than_restarting_it(tmp_path):
+    """Opening a store against an existing database must continue the chain."""
+    from uuid import uuid4
+
+    db_path = str(tmp_path / "resume.db")
+
+    first = EventStore(db_path=db_path)
+    first.append(AgentEvent(tool_name="a", run_id=uuid4()))
+    first.close()
+
+    second = EventStore(db_path=db_path)
+    second.append(AgentEvent(tool_name="b", run_id=uuid4()))
+
+    assert second.verify_chain()["is_valid"] is True
+    rows = second._get_conn().execute(
+        "SELECT prev_hash, event_hash FROM events ORDER BY rowid"
+    ).fetchall()
+    assert rows[1][0] == rows[0][1]
+    second.close()
+
+
+# ── float precision in the chain ─────────────────────────────────────
+
+
+def test_latency_survives_the_hash_round_trip_exactly():
+    """The chain hashes latency_ms, so the column must return exactly what was hashed.
+
+    PostgreSQL REAL is float4: it stores four bytes and hands back a rounded value, while
+    the hash covers the float8 Python measured. The two never agree, and every chain
+    verification failed at row 1 — silently, on the backend used for hosted deployments
+    and not on the SQLite one used in development. The schema now says DOUBLE PRECISION.
+
+    This guards the property rather than the column type: whatever the storage, a latency
+    that goes in must come back bit-identical or the chain is unverifiable.
+    """
+    import struct
+
+    measured = 3.6518339999234
+    as_float4 = struct.unpack("f", struct.pack("f", measured))[0]
+
+    assert as_float4 != measured, "precondition: float4 does lose precision here"
+
+    schema = (Path(__file__).parent.parent / "agentguard" / "pg_store.py").read_text()
+    assert "latency_ms DOUBLE PRECISION," in schema
+    assert "latency_ms REAL," not in schema
+
+    sqlite_schema = (Path(__file__).parent.parent / "agentguard" / "event_store.py").read_text()
+    assert "latency_ms REAL," in sqlite_schema, "SQLite REAL is an 8-byte double — fine"

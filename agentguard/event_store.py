@@ -89,12 +89,41 @@ class EventStore:
         self._chain_lock = threading.Lock()
         self._last_hash: str = self._GENESIS_HASH
         self._init_db()
+        self._resume_chain()
+
+    def _resume_chain(self) -> None:
+        """Restore _last_hash from the most recently appended event.
+
+        Without this, a new EventStore opened against an existing DB would
+        start its first append() with prev_hash=GENESIS, breaking the
+        cryptographic chain at that row. Resuming makes the chain durable
+        across process restarts.
+        """
+        row = self._get_conn().execute(
+            "SELECT event_hash FROM events ORDER BY rowid DESC LIMIT 1"
+        ).fetchone()
+        if row is not None:
+            self._last_hash = row[0]
 
     def _get_conn(self) -> sqlite3.Connection:
         """Return a thread-local SQLite connection."""
         if not hasattr(self._local, "conn") or self._local.conn is None:
-            self._local.conn = sqlite3.connect(self.db_path)
-            self._local.conn.execute("PRAGMA journal_mode=WAL")
+            # isolation_level=None puts the driver in autocommit mode so append() can
+            # open its own BEGIN IMMEDIATE transaction explicitly. busy_timeout makes a
+            # competing writer wait for the lock instead of raising "database is locked".
+            self._local.conn = sqlite3.connect(self.db_path, isolation_level=None, timeout=10.0)
+            # busy_timeout must come first. It governs every statement after it, and the
+            # very next one — switching to WAL — takes a brief exclusive lock. Set the
+            # other way round, two stores opening the same file at once raced and one
+            # raised "database is locked" from inside __init__, killing the writer before
+            # it recorded anything.
+            self._local.conn.execute("PRAGMA busy_timeout=10000")
+            # Journal mode is a persistent property of the database, so under contention
+            # it is enough that one connection wins: the rest inherit WAL. Losing the
+            # race is not an error worth failing a connection over — WAL is a concurrency
+            # optimisation, while the chain's integrity comes from BEGIN IMMEDIATE.
+            with contextlib.suppress(sqlite3.OperationalError):
+                self._local.conn.execute("PRAGMA journal_mode=WAL")
             self._local.conn.execute("PRAGMA synchronous=NORMAL")
         return self._local.conn
 
@@ -138,30 +167,44 @@ class EventStore:
                 "risk_flags": event.risk_flags,
                 "policy_result": event.policy_result,
             }
-            prev_hash = self._last_hash
-            event_hash = self._compute_event_hash(event_data, prev_hash)
-
             conn = self._get_conn()
-            conn.execute(
-                _INSERT_EVENT_SQL,
-                (
-                    str(event.event_id),
-                    event.timestamp.isoformat(),
-                    event.agent_id,
-                    event.session_id,
-                    event.tool_name,
-                    str(event.run_id),
-                    str(event.parent_run_id) if event.parent_run_id else None,
-                    event.input_hash,
-                    event.output_hash,
-                    event.latency_ms,
-                    json.dumps(event.risk_flags),
-                    event.policy_result,
-                    prev_hash,
-                    event_hash,
-                ),
-            )
-            conn.commit()
+
+            # BEGIN IMMEDIATE takes the write lock before the read, so the tip cannot
+            # change between reading it and inserting. Reading from the database rather
+            # than from in-memory state is what makes the chain correct when several
+            # processes share one store — each holds its own _last_hash, and two of them
+            # resuming from the same tip is exactly how the chain forks.
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                row = conn.execute(
+                    "SELECT event_hash FROM events ORDER BY rowid DESC LIMIT 1"
+                ).fetchone()
+                prev_hash = row[0] if row is not None else self._GENESIS_HASH
+                event_hash = self._compute_event_hash(event_data, prev_hash)
+
+                conn.execute(
+                    _INSERT_EVENT_SQL,
+                    (
+                        str(event.event_id),
+                        event.timestamp.isoformat(),
+                        event.agent_id,
+                        event.session_id,
+                        event.tool_name,
+                        str(event.run_id),
+                        str(event.parent_run_id) if event.parent_run_id else None,
+                        event.input_hash,
+                        event.output_hash,
+                        event.latency_ms,
+                        json.dumps(event.risk_flags),
+                        event.policy_result,
+                        prev_hash,
+                        event_hash,
+                    ),
+                )
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+            conn.execute("COMMIT")
             self._last_hash = event_hash
 
     def get_event_count(self) -> int:

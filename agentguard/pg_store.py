@@ -34,7 +34,11 @@ CREATE TABLE IF NOT EXISTS events (
     parent_run_id TEXT,
     input_hash TEXT NOT NULL,
     output_hash TEXT NOT NULL,
-    latency_ms REAL,
+    -- DOUBLE PRECISION, not REAL. Postgres REAL is float4: it stores 4 bytes and
+    -- returns a rounded value, while the chain hash is computed over the float8
+    -- Python measured. The two never agree, so every verification failed at row 1.
+    -- SQLite is unaffected — its REAL is an 8-byte IEEE double.
+    latency_ms DOUBLE PRECISION,
     risk_flags TEXT NOT NULL,
     policy_result TEXT NOT NULL,
     prev_hash TEXT NOT NULL DEFAULT '',
@@ -58,6 +62,9 @@ INSERT INTO events (
 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 ON CONFLICT (event_id) DO NOTHING
 """
+
+
+_CHAIN_LOCK_KEY = 0x41475F4348414E  # "AG_CHAN" — advisory lock namespace for the audit chain
 
 
 class PostgresEventStore:
@@ -85,6 +92,26 @@ class PostgresEventStore:
         self._chain_lock = threading.Lock()
         self._last_hash: str = self._GENESIS_HASH
         self._init_db()
+        self._resume_chain()
+
+    def _resume_chain(self) -> None:
+        """Restore _last_hash from the most recently appended event.
+
+        Without this, a new PgEventStore opened against an existing DB
+        would start its first append() with prev_hash=GENESIS, breaking
+        the cryptographic chain at that row. Critical in multi-worker
+        deployments where each FastAPI process constructs its own store.
+
+        Ordering matches verify_chain() (timestamp ASC), so "last" means
+        max(timestamp). The companion SQLite store uses rowid because
+        SQLite has no native insertion-time column.
+        """
+        conn = self._get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT event_hash FROM events ORDER BY timestamp DESC LIMIT 1")
+        row = cur.fetchone()
+        if row is not None:
+            self._last_hash = row[0]
 
     def _get_conn(self):
         """Get or create a psycopg2/pg8000 connection.
@@ -143,11 +170,20 @@ class PostgresEventStore:
                 "risk_flags": event.risk_flags,
                 "policy_result": event.policy_result,
             }
-            prev_hash = self._last_hash
-            event_hash = self._compute_event_hash(event_data, prev_hash)
-
             conn = self._get_conn()
             cur = conn.cursor()
+
+            # A transaction-scoped advisory lock serialises appenders across every
+            # process and worker sharing this database. An ordinary SELECT ... FOR UPDATE
+            # would not do: on an empty table there is no row to lock, so two writers
+            # would both read the genesis tip and fork the chain. The lock releases at
+            # COMMIT or ROLLBACK.
+            cur.execute("SELECT pg_advisory_xact_lock(%s)", (_CHAIN_LOCK_KEY,))
+            cur.execute("SELECT event_hash FROM events ORDER BY timestamp DESC LIMIT 1")
+            tip = cur.fetchone()
+            prev_hash = tip[0] if tip is not None else self._GENESIS_HASH
+            event_hash = self._compute_event_hash(event_data, prev_hash)
+
             cur.execute(
                 _INSERT_EVENT_SQL,
                 (
