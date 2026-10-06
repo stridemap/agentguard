@@ -66,6 +66,7 @@ dev = [
 
 [project.scripts]
 agentguard = "agentguard.__main__:main"
+minigate = "minigate.__main__:main"
 
 [project.urls]
 Homepage = "https://stridemap.ai"
@@ -75,7 +76,7 @@ Issues = "https://github.com/stridemap/agentguard/issues"
 Changelog = "https://github.com/stridemap/agentguard/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
-include = ["agentguard*"]
+include = ["agentguard*", "minigate*"]
 
 [tool.ruff]
 target-version = "py311"
