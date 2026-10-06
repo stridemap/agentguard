@@ -1,0 +1,164 @@
+# MiniGate default policy — MCP tool governance
+#
+# Tool names are qualified as <server>.<tool>, where <server> is the --server-name
+# MiniGate was started with. Matching is exact-or-regex (re.fullmatch), so
+# "notion\\..*" matches every tool on the notion server.
+#
+# Non-tool methods are addressed as <server>.<method>, e.g. "notion.resources/read".
+#
+# Rules are evaluated in priority order, lowest number first, and the first match
+# wins. AgentGuard's engine defaults to ALLOW when nothing matches — rule MG-999
+# below is what turns that into an allowlist. Delete it to run MiniGate in
+# monitor-only mode while you learn which tools your agents actually use.
+
+rules:
+  # ── Data protection (highest priority) ────────────────────────────
+  - id: MG-001
+    name: Never send government identifiers to any tool
+    description: SSNs must not leave the model in tool arguments, regardless of destination.
+    priority: 5
+    conditions:
+      tool_name: ".*"
+      data_pattern: US_SSN
+      direction: input
+    action: BLOCK
+
+  - id: MG-002
+    name: Never send payment card numbers to any tool
+    priority: 6
+    conditions:
+      tool_name: ".*"
+      data_pattern: CREDIT_CARD
+      direction: input
+    action: BLOCK
+
+  # ── Destructive operations ────────────────────────────────────────
+  # Verb-matching note: tool names vary in shape across servers — `fetch`,
+  # `read_file`, `notion-fetch`. The pattern below matches a verb as a whole
+  # component anywhere in the name: an optional prefix ending in - or _, the verb,
+  # and an optional suffix starting with - or _. Requiring a separator after the
+  # verb would miss every bare-verb tool; requiring none would match substrings
+  # inside unrelated words.
+  - id: MG-010
+    name: Block deletion across all servers
+    description: Deletes are irreversible and rarely what an autonomous agent should do unattended.
+    priority: 10
+    conditions:
+      tool_name: ".*\\.(.*[-_])?(delete|remove|destroy|drop)([-_].*)?"
+    action: BLOCK
+
+  # ── Per-server posture ────────────────────────────────────────────
+  - id: MG-020
+    name: Notion is read-only
+    description: Reads and searches are allowed; anything that mutates a page is not.
+    priority: 20
+    conditions:
+      tool_name: "notion\\.notion-(create|update|move|duplicate)-.*"
+    action: BLOCK
+
+  - id: MG-021
+    name: Alert on Google Drive writes
+    description: Permitted, but surfaced for review — Drive is a common exfiltration sink.
+    priority: 21
+    conditions:
+      tool_name: "google_drive\\.(create_file|copy_file)"
+    action: ALERT
+    alert_severity: MEDIUM
+
+  # ── Resources ─────────────────────────────────────────────────────
+  #
+  # Resources are addressed as <server>.resource:<uri> rather than by name, so rules
+  # match the URI directly. Reading a resource is how file and document content enters
+  # model context, which makes it both an exfiltration path and an injection surface.
+  - id: MG-030
+    name: Block credential and key material
+    description: Paths that hold secrets, whatever the server claims they are.
+    priority: 15
+    conditions:
+      tool_name: ".*\\.resource:.*(/\\.ssh/|/\\.aws/|/\\.env|id_rsa|id_ed25519|\\.pem|\\.p12|credentials|secrets?\\.(ya?ml|json|toml)).*"
+    action: BLOCK
+
+  - id: MG-031
+    name: Block shell and system configuration
+    priority: 16
+    conditions:
+      tool_name: ".*\\.resource:file:///(etc|proc|sys|var/log)/.*"
+    action: BLOCK
+
+  - id: MG-110
+    name: Allow other resource reads
+    description: >
+      Resources are permitted by default once the rules above have run. Delete this rule
+      to make resources an allowlist too — then add explicit ALLOW rules for the URIs
+      your agents legitimately need, since MG-999 will otherwise deny them all.
+    priority: 110
+    conditions:
+      tool_name: ".*\\.resource:.*"
+    action: ALLOW
+
+  # ── Server-initiated requests ─────────────────────────────────────
+  #
+  # sampling/createMessage runs backwards: the server asks the client to run an LLM.
+  # The server authors the prompt, spends the user's tokens, and receives the completion
+  # — so a server that can sample can both instruct the model and read what it produced.
+  # Denied outright here. Replace this rule with an ALLOW scoped to the specific server
+  # that needs it, and keep sampling.max_include_context at thisServer or lower.
+  - id: MG-050
+    name: Block server-initiated sampling
+    priority: 50
+    conditions:
+      tool_name: ".*\\.sampling/createMessage"
+    action: BLOCK
+
+  # elicitation/create also runs backwards, but reaches the user rather than the model:
+  # the server writes the words a human reads and gets back whatever they type. It is a
+  # legitimate UX feature, so it is allowed — the real control is the sensitive-field
+  # check in elicitation.sensitive_fields, which refuses forms asking for credentials or
+  # personal identifiers no matter how the request is worded.
+  - id: MG-130
+    name: Allow elicitation
+    priority: 130
+    conditions:
+      tool_name: ".*\\.elicitation/create"
+    action: ALLOW
+
+  # ── Prompts ───────────────────────────────────────────────────────
+  #
+  # Prompts are addressed as <server>.prompt:<name>. A prompt expands into messages that
+  # the client inserts into the conversation as authored turns, which is a stronger trust
+  # position than a tool result — so the primary control is injection scanning of what
+  # comes back, not an allowlist of names.
+  - id: MG-120
+    name: Allow prompt expansion
+    description: >
+      Prompts are user-initiated and few; blocking them by name is rarely what you want.
+      Delete this rule to make prompts an allowlist, then add explicit ALLOW rules.
+    priority: 120
+    conditions:
+      tool_name: ".*\\.prompt:.*"
+    action: ALLOW
+
+  # ── Allowlist ─────────────────────────────────────────────────────
+  - id: MG-100
+    name: Allow reads everywhere
+    description: Conventional read-shaped verbs across every governed server.
+    priority: 100
+    conditions:
+      tool_name: ".*\\.(.*[-_])?(get|list|search|read|fetch|find|query|view)([-_].*)?"
+    action: ALLOW
+
+  - id: MG-101
+    name: Allow Linear issue management
+    priority: 101
+    conditions:
+      tool_name: "linear\\.(save_issue|save_comment|list_.*|get_.*|search_.*)"
+    action: ALLOW
+
+  # ── Default deny ──────────────────────────────────────────────────
+  - id: MG-999
+    name: Deny anything not explicitly allowed
+    description: >
+      Makes the policy an allowlist. Tools reaching this rule are stripped from
+      tools/list as well as blocked on call, so the model never sees them.
+    priority: 999
+    action: BLOCK

@@ -1,0 +1,144 @@
+# MiniGate — hosted remote gateway, one deployment per partner.
+#
+# Everything that differs between partners comes from the environment, so this file is
+# baked into the image unchanged and a new partner is a new set of variables.
+#
+#   PARTNER          short name, recorded on every audit event      e.g. acme
+#   PUBLIC_URL       the URL clients actually dial                  e.g. https://acme.mcp.stridemap.ai
+#   DATABASE_URL     injected by Railway's Postgres plugin          (read by the store factory)
+#   UPSTREAM_URL     the vendor MCP endpoint being governed
+#   UPSTREAM_AS      that vendor's authorization server
+#   SERVER_NAME      the name policy rules and the registry key on   default: linear
+#   REGISTRY_MODE    off | observe | enforce                         default: enforce
+#   UPSTREAM_SCOPES  comma-free YAML list of OAuth scopes            default: read, write
+#   AUTH_REQUIRE     true | false — see the note on auth below       default: true
+#
+# An unset variable without a default is a startup error, not an empty string. A gateway
+# advertising public_url: "" answers OAuth discovery with a URL no client can reach, and
+# that failure surfaces as a client-side auth loop far from its cause.
+
+client_id: "${PARTNER}"
+
+# The default-deny allowlist, not policies/mine.yaml. A hosted deployment fronting
+# someone else's workspace should not inherit a blocklist posture by accident.
+policy: policies/minigate.yaml
+
+# Left unset on purpose: minigate.store.create_sink(None) defers to AgentGuard's store
+# factory, which reads DATABASE_URL and selects the PostgreSQL backend. Postgres matters
+# here beyond durability — its chain append takes pg_advisory_xact_lock, and SQLite on a
+# platform with ephemeral disk loses the audit chain on every redeploy.
+# database_url:
+
+# MiniGate's own faults must not break the partner's agent.
+fail_closed: false
+
+dlp:
+  enabled: true
+  sensitivity: MEDIUM
+  redact_requests: true
+  redact_responses: true
+
+injection:
+  enabled: true
+  # LOW is stage-1 regex only. MEDIUM and HIGH invoke an LLM classifier that is far too
+  # slow to sit inline on a tool call — do not raise this without measuring the latency.
+  sensitivity: LOW
+  block_on_injected: true
+  scan_tool_descriptions: true
+
+http:
+  host: 0.0.0.0            # overridden by the entrypoint; Railway needs all-interfaces
+  port: 8787               # overridden by $PORT
+  # Required behind TLS termination: the request host is the platform's, not the name the
+  # client dialled, and a resource identifier the client does not recognise fails discovery.
+  public_url: "${PUBLIC_URL}"
+  upstream_timeout_seconds: 120
+  auth:
+    mode: passthrough      # MiniGate mints and stores no tokens; the vendor authorizes
+    # With `true`, MiniGate issues the 401 and advertises its OWN resource URI. A client
+    # honouring RFC 8707 then binds the token to that URI, and an upstream that validates
+    # audience strictly rejects it — the failure appears AFTER a successful vendor login.
+    # Setting `false` makes the upstream issue the 401 instead, so the client binds to the
+    # vendor's own resource identifier and the token is accepted. The cost is that MiniGate
+    # no longer challenges unauthenticated callers itself; the upstream still does, so
+    # nothing is authorised that would not have been. See docs/adr/002.
+    require: ${AUTH_REQUIRE:-true}
+
+registry:
+  enabled: true
+  # On the volume, not in the image: this records which definitions the partner approved,
+  # and a redeploy must not revert their approvals to whatever was baked at build time.
+  path: "${MINIGATE_STATE_DIR:-/data}/minigate-registry.yaml"
+  # Start a new partner at `observe`, sync, then move to `enforce`. Deploying straight
+  # into enforce against an unsynced registry serves zero tools — every definition is
+  # UNKNOWN — and the gateway looks broken rather than strict.
+  mode: "${REGISTRY_MODE:-enforce}"
+
+lineage:
+  # Off for a single hosted partner. The taint store is a SQLite file whose sharing model
+  # is "several processes, one filesystem" — that holds on one replica with a volume, and
+  # silently stops catching crossings the moment there are two. Turn it on deliberately,
+  # pinned to a single replica, not by default.
+  enabled: false
+  mode: observe
+  store: "${MINIGATE_STATE_DIR:-/data}/minigate-taint.db"
+  ttl_seconds: 3600
+  min_value_length: 8
+
+sampling:
+  max_include_context: thisServer
+  scan_completions: true
+
+elicitation:
+  scan_responses: true
+
+servers:
+  # `serve` only accepts url-backed servers, so a hosted gateway never spawns a child
+  # process. HTTP in, HTTP out.
+  #
+  # The key is the server NAME, and it is load-bearing in two places that will not warn
+  # you when they disagree: policy rules match `<name>.<tool>`, and registry entries are
+  # keyed by it. A registry synced for `linear` approves nothing for a server named
+  # `upstream`, so an enforcing gateway withholds every tool and serves an empty list.
+  # It must match whatever `minigate registry sync --server-name` was run with.
+  "${SERVER_NAME:-linear}":
+    url: "${UPSTREAM_URL:-https://mcp.linear.app/mcp}"
+    authorization_servers: ["${UPSTREAM_AS:-https://mcp.linear.app}"]
+    # These land verbatim in `scopes_supported` on the protected-resource document, which
+    # is what a client reads to build its authorization request. Leave them unset and the
+    # document advertises an empty list — the client then asks for no scopes and the
+    # vendor refuses. Mirror whatever the upstream's own metadata advertises:
+    #   curl https://mcp.linear.app/.well-known/oauth-protected-resource/mcp
+    scopes: ["${UPSTREAM_SCOPE_READ:-read}", "${UPSTREAM_SCOPE_WRITE:-write}"]
+    # Advertise the UPSTREAM's OAuth resource identifier, not our own.
+    #
+    # Strictly, RFC 9728 says we are the resource server the client dialled, and our own
+    # URL is the correct answer. But the token is minted by the upstream's authorization
+    # server, and one honouring RFC 8707 will not issue a token for a resource it does
+    # not own. Linear's metadata declares `resource: https://mcp.linear.app/mcp`; a client
+    # that binds to MiniGate's URI gets a token Linear then refuses — observed as a
+    # completed OAuth flow followed by an unbroken run of 401s carrying a valid token.
+    #
+    # Unset this for an upstream that does not check audience.
+    # Deliberately EMPTY by default. Claude requires the protected-resource document's
+    # `resource` to match the URL the user typed into the connector, path included —
+    # advertising the upstream's identifier instead breaks that match. Set this only for
+    # a client that does not check, or an upstream that rejects a foreign audience and
+    # whose AS lets you register one (Entra's Application ID URI is the analogue).
+    resource_identifier: "${UPSTREAM_RESOURCE:-}"
+    trust: internal
+
+  # A SECOND vendor behind the same gateway, deliberately with a different authorization
+  # server (Google, not Linear). This is the isolation test for the connector failure:
+  # if a custom connector reaches Drive through MiniGate but not Linear, the gateway is
+  # not the problem and the fault is specific to the Linear leg.
+  #
+  # Mirrors https://drivemcp.googleapis.com/.well-known/oauth-protected-resource/mcp/v1
+  gdrive:
+    url: https://drivemcp.googleapis.com/mcp/v1
+    authorization_servers: ["https://accounts.google.com/"]
+    scopes:
+      - "https://www.googleapis.com/auth/drive.readonly"
+      - "https://www.googleapis.com/auth/drive.file"
+    resource_identifier: "https://drivemcp.googleapis.com/mcp/v1"
+    trust: confidential

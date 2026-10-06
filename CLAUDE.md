@@ -69,12 +69,39 @@ sentinel/                   # Root repository
 ├── web/                    # Next.js 14 frontend (landing page + enterprise dashboard)
 ├── dashboard/              # Streamlit real-time trace viewer (MVP)
 ├── demo/                   # Runnable attack scenario scripts
+├── marketing/              # a16z Speedrun materials (demo suite, pitch, assets, messaging)
 ├── policies/               # YAML policy definitions (default, finance, healthcare)
 ├── tests/                  # pytest test suite (80% coverage minimum)
 ├── docs/                   # PDFs: PRD, Architecture, Design, Functional Spec, Test Plan
 ├── .github/workflows/      # GitHub Actions CI (Python 3.11 + 3.12 matrix)
 └── pyproject.toml          # Package config (setuptools, ruff, pytest)
 ```
+
+## Demo / Marketing Change Policy
+
+**Changes under `marketing/` or `demo/` must not modify `agentguard/`.**
+
+These folders contain external scaffolding (the a16z Speedrun demo suite,
+pitch materials, etc.). They consume agentguard as-shipped — solve demo
+problems in the demo layer (per-demo audit DBs, wrapper tools, deterministic
+LangGraph state graphs, local helpers), not by patching the library.
+
+If a real bug in `agentguard/` is discovered while building a demo:
+1. Document the finding (file, symptom, proposed fix) in the demo PR/notes.
+2. Use a demo-layer workaround so the demo ships.
+3. Address the library bug in a separate, dedicated change with a regression
+   test in `tests/` and the full `pytest tests/` suite green.
+
+**Verification checklist for every change under `marketing/` or `demo/`:**
+
+```bash
+git diff -- agentguard/ tests/        # must be empty
+pytest tests/                         # must still pass (372+ tests)
+```
+
+The same constraint is repeated in `marketing/README.md` and
+`marketing/demo/README.md` so anyone working in those folders sees it
+without having to dig into root-level docs.
 
 ## Tech Stack
 

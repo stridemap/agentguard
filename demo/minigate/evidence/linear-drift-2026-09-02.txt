@@ -1,0 +1,109 @@
+Loaded 57 approved tools from /Users/praveenradjassegarin/Documents/Personal_docs/StartUp/Stridemap/sentinel/minigate-registry.yaml
+Reading tool manifest from: npx -y mcp-remote https://mcp.linear.app/mcp
+{
+"new": [],
+"changed": [
+"list_issues",
+"save_issue"
+],
+"unchanged": [
+"create_attachment",
+"create_attachment_from_upload",
+"create_issue_label",
+"delete_attachment",
+"delete_comment",
+"delete_diff_comment",
+"delete_status_update",
+"extract_images",
+"get_agent_skill",
+"get_attachment",
+"get_diff",
+"get_diff_threads",
+"get_document",
+"get_issue",
+"get_issue_status",
+"get_milestone",
+"get_project",
+"get_release",
+"get_release_note",
+"get_status_updates",
+"get_team",
+"get_template",
+"get_user",
+"get_workspace",
+"list_agent_skills",
+"list_comments",
+"list_cycles",
+"list_diffs",
+"list_documents",
+"list_issue_labels",
+"list_issue_statuses",
+"list_milestones",
+"list_project_labels",
+"list_projects",
+"list_release_notes",
+"list_release_pipelines",
+"list_releases",
+"list_teams",
+"list_templates",
+"list_users",
+"merge_diff",
+"prepare_attachment_upload",
+"resolve_diff_thread",
+"save_comment",
+"save_diff_comment",
+"save_document",
+"save_milestone",
+"save_project",
+"save_release",
+"save_release_note",
+"save_status_update",
+"search_documentation",
+"share_issue",
+"submit_diff_review",
+"unshare_issue"
+],
+"missing": []
+}
+/Library/Frameworks/Python.framework/Versions/3.13/Resources/Python.app/Contents/MacOS/Python: can't open file '/private/tmp/claude-501/-Users-praveenradjassegarin-Documents-Personal-docs-StartUp-Stridemap-sentinel/7fc06f08-1ead-4b58-a3ed-29ef01b146c7/scratchpad/drift_detail.py': [Errno 2] No such file or directory
+
+======================================================================
+list_issues
+======================================================================
+--- approved
++++ live
+@@ -49,2 +49,3 @@
+       "id",
++      "uuid",
+       "title",
+
+======================================================================
+save_issue
+======================================================================
+--- approved
++++ live
+@@ -17,2 +17,9 @@
+   "properties": {
++   "addLabels": {
++    "description": "Label names or IDs as a JSON array of strings (e.g. [\"Bug\", \"Urgent\"]) to add. Append-only; existing labels are never removed. Cannot be combined with a team change",
++    "items": {
++     "type": "string"
++    },
++    "type": "array"
++   },
+    "addReleases": {
+@@ -113,3 +120,3 @@
+    "labels": {
+-    "description": "Label names or IDs as a JSON array of strings (e.g. [\"Bug\", \"Urgent\"]). Replaces the full label set; existing labels not included are removed. Omit to leave labels unchanged",
++    "description": "Label names or IDs as a JSON array of strings (e.g. [\"Bug\", \"Urgent\"]). Replaces the full label set; existing labels not included are removed. Omit to leave labels unchanged. Cannot be combined with addLabels/removeLabels; prefer those for incremental changes",
+     "items": {
+@@ -336,2 +343,9 @@
+     "description": "Issue IDs/identifiers to stop blocking",
++    "items": {
++     "type": "string"
++    },
++    "type": "array"
++   },
++   "removeLabels": {
++    "description": "Label names or IDs as a JSON array of strings (e.g. [\"Bug\", \"Urgent\"]) to remove. Only valid when updating an existing issue. Cannot be combined with a team change",
+     "items": {

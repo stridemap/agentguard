@@ -1,0 +1,136 @@
+# MiniGate example configuration
+#
+#   cp minigate.example.yaml minigate.yaml
+#   minigate snippet --server-name notion --config minigate.yaml
+#
+# Then paste the printed fragment into claude_desktop_config.json and restart the
+# client. Remove the directory version of the same connector afterwards, or calls
+# will route around the gateway.
+
+# Which MCP client this instance serves. Recorded on every audit event.
+client_id: claude-desktop
+
+# Default policy for all servers. Override per server below.
+policy: policies/minigate.yaml
+#policy: policies/mine.yaml
+
+# SQLite path, or a PostgreSQL URL for a shared audit store.
+database_url: minigate.db
+
+# On an internal gateway error, block the call instead of forwarding it.
+# Default false: MiniGate's own faults must not break the agent. A rule that
+# evaluates to BLOCK always blocks regardless of this setting.
+fail_closed: false
+
+dlp:
+  enabled: true
+  sensitivity: MEDIUM       # LOW | MEDIUM | HIGH
+  redact_requests: true     # strip PII from tool arguments before forwarding
+  redact_responses: true    # strip PII from results before they enter context
+
+injection:
+  enabled: true
+  # LOW runs stage-1 regex only. MEDIUM and HIGH invoke the stage-2 LLM
+  # classifier, which is far too slow to sit inline on a tool call. Leave this
+  # at LOW unless you have measured the latency you are accepting.
+  sensitivity: LOW
+  block_on_injected: true       # withhold results whose content scores INJECTED
+  scan_tool_descriptions: true  # tool-poisoning defence on tools/list
+
+# Remote gateway mode — run MiniGate as an MCP server clients connect to instead of the
+# vendor's endpoint. Only servers with a `url:` below are served over HTTP.
+#
+#   minigate serve --config minigate.yaml
+#
+# OAuth is passthrough: MiniGate advertises the upstream's own authorization server and
+# relays the client's token verbatim, minting and storing nothing. See docs/adr/002.
+http:
+  host: 127.0.0.1
+  port: 8787
+  # What clients actually dial. Required behind TLS termination, where the request host is
+  # the proxy's rather than the name the client used.
+  public_url: null
+  upstream_timeout_seconds: 120
+  auth:
+    mode: passthrough       # passthrough | none  ('none' accepts everything — localhost only)
+    require: true
+
+# Approved-tool registry with definition pinning. Catches a server that changes a
+# tool's description or schema after it was reviewed — a change no tool_name rule
+# can see, because the name stays the same.
+#
+#   minigate registry sync --server-name notion --config minigate.yaml
+#   minigate registry diff --server-name notion --config minigate.yaml   # exit 1 if review needed
+#
+# Start in observe, review what sync reports, then switch to enforce.
+registry:
+  enabled: true
+  path: minigate-registry.yaml
+  mode: enforce             # off | observe | enforce
+
+# sampling/createMessage runs backwards: the server asks your client to run an LLM,
+# authoring the prompt and receiving the completion. The shipped policy denies it via
+# MG-050; these settings apply when you allow it for a specific server.
+sampling:
+  # allServers asks the client to attach context from EVERY connected server and hand the
+  # result to the one that asked. Keep this at thisServer or lower unless you mean it.
+  max_include_context: thisServer   # none | thisServer | allServers
+  scan_completions: true            # DLP + lineage on the completion before it leaves
+
+# elicitation/create is the only channel that reaches the user directly: the server writes
+# the words a human reads and receives whatever they type. The MCP spec says servers MUST
+# NOT request sensitive information through it — this is where that becomes enforcement.
+# The check covers field names, titles, descriptions, enum options, and the message text.
+elicitation:
+  scan_responses: true      # DLP + lineage on what the user typed, before it leaves
+  # sensitive_fields defaults cover passwords, API keys, tokens, SSNs, cards, PIN/OTP/MFA.
+  # Uncomment to extend rather than replace — setting this overrides the defaults entirely.
+  # sensitive_fields:
+  #   - "employee[-_ ]?id"
+
+# Data lineage across chained calls: taint what a tool returns with its source's trust
+# level, then block later calls that would carry it to a less trusted sink. Data may flow
+# to equal or higher trust, never downward.
+#
+# Only hashes are stored, never raw values. The store is shared across MiniGate processes
+# on purpose — each process fronts one server, and the case worth catching is
+# read-from-one, write-to-another, so point every server at the same path.
+#
+# Every server defaults to INTERNAL, so nothing is detected until trust is declared below.
+# Start in observe to see what would fire.
+lineage:
+  enabled: false
+  mode: observe             # off | observe | enforce
+  store: minigate-taint.db
+  ttl_seconds: 3600         # how long a value stays tainted after it is read
+  min_value_length: 8       # shorter values match everything and are ignored
+
+servers:
+  # A stdio upstream, for desktop clients.
+  notion:
+    command: ["npx", "-y", "mcp-remote", "https://mcp.notion.com/mcp"]
+    trust: internal
+
+  # The same vendor as a remote upstream, for `minigate serve`. A server has one upstream:
+  # a command or a url, never both.
+  notion-remote:
+    url: https://mcp.notion.com/mcp
+    authorization_servers: ["https://mcp.notion.com"]
+    scopes: ["mcp:read"]
+    trust: internal
+
+  linear:
+    command: ["npx", "-y", "mcp-remote", "https://mcp.linear.app/mcp"]
+    trust: internal
+    tool_trust:
+      # A server can be both source and sink — override the tools that publish outward.
+      create_public_issue: public
+
+  todoist:
+    command: ["npx", "-y", "mcp-remote", "https://ai.todoist.net/mcp"]
+    trust: internal
+
+  filesystem:
+    command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/Users/you/Documents"]
+    policy: policies/filesystem.yaml   # tighter posture for local files
+    trust: confidential

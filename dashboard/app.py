@@ -51,7 +51,16 @@ CSS = """
     .risk-high { color: #EF4444; font-weight: 600; }
     .risk-blocked { color: #EF4444; font-weight: 700; }
     .metric-card { padding: 0.5rem; }
-    div[data-testid="stMetric"] { background: #111827; border-radius: 8px; padding: 12px; }
+    /* Metric card uses a translucent gray overlay so the four summary
+       metrics (Total Events, Latency p99, Events/sec, High Risk) remain
+       readable in both light and dark Streamlit themes. The previous solid
+       #111827 hid black-on-black text under the default light theme. */
+    div[data-testid="stMetric"] {
+        background: rgba(127, 127, 127, 0.10);
+        border: 1px solid rgba(127, 127, 127, 0.20);
+        border-radius: 8px;
+        padding: 12px;
+    }
 </style>
 """
 

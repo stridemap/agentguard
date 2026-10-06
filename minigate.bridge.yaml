@@ -1,0 +1,27 @@
+# Local bridge-mode gateway, for an end-to-end run against real Linear.
+#
+# MiniGate is the authorization server to the client and an OAuth client to Linear.
+# Loopback throughout, so Linear redirects back to this machine.
+
+http:
+  host: 127.0.0.1
+  port: 8899
+  public_url: http://127.0.0.1:8899
+  auth:
+    mode: bridge
+    require: true
+
+servers:
+  linear:
+    url: https://mcp.linear.app/mcp
+
+policy: policies/minigate.yaml
+database_url: minigate-bridge-audit.db
+
+registry:
+  path: minigate-registry.yaml
+  mode: observe        # Linear went 57 -> 68 tools; observe records the drift, enforce
+                       # would withhold the new ones until reviewed.
+
+lineage:
+  enabled: false       # single-user local run; nothing to cross

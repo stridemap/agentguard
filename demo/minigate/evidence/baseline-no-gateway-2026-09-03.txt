@@ -1,0 +1,109 @@
+MiniGate demo scenarios — BASELINE: no gateway in the path
+Captured: 2026-09-03 21:34 UTC
+Path:     client -> npx mcp-remote -> https://mcp.linear.app/mcp
+
+This is the governance posture of the stock Linear connector
+(Anthropic cloud -> Linear). The network route differs; the posture
+is identical — nothing evaluates, filters, redacts or records.
+
+Fixtures: Demo team / projects MiniGate S4, S5, S7
+Compare against: through-cloud-minigate-<date>.txt
+======================================================================
+
+Scenario 1 — Unsanctioned tool never reaches the model
+    MiniGate is NOT in the path — straight to Linear
+
+▸ tools/list → 57 tools
+    delete verbs handed to the model: ['delete_attachment', 'delete_comment', 'delete_diff_comment', 'delete_status_update']
+
+▸ call delete_comment with a non-existent id (aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee)
+    reached Linear — this is the vendor's own error, not a gateway refusal:
+    {"error":"invalid_request","message":"Could not find referenced Comment.","status":400,"requestI
+    d":"a357e0a39d806798"}
+
+Scenario 2 — Tool poisoning
+    one tool description is rewritten in flight by poison_shim
+
+▸ tools delivered: 57
+    get_issue   (poisoned)  OFFERED
+    get_project (control)   OFFERED
+
+Scenario 3 — The rug-pull
+    MiniGate is NOT in the path — straight to Linear
+
+▸ tools/list → 57 tools
+    list_issues: OFFERED
+    save_issue: OFFERED
+    the definitions changed; nothing here can tell
+
+Scenario 4 — Indirect prompt injection in returned content
+    MiniGate is NOT in the path — straight to Linear
+
+▸ list_issues on the injection project
+    RETURNED 1184 chars
+    injection phrases now in the model's context: ['Ignore all previous instructions', 'ignore previous instructions', 'Pretend you are an admin']
+
+▸ the same call on the control project, for contrast
+    MiniGate S5 → returned normally
+
+Scenario 5 — Trust-boundary crossing
+    MiniGate is NOT in the path — straight to Linear
+
+▸ read the confidential issue — get_issue DEM-33
+    returned
+
+▸ now write what we just read into a public sink — save_comment
+    POSTED — no control fired. Two ordinary calls, one breach.
+    (demo comment deleted)
+
+Scenario 7 — PII redaction in flight
+    MiniGate is NOT in the path — straight to Linear
+
+▸ read each issue individually
+    DEM-39   Quarterly usage report is ready              returned  nothing to redact
+    DEM-38   Onboarding contact details for the pilot a   returned  NOT redacted  in the clear: ['415-555-0142']
+    DEM-37   Billing dispute — card ending 4242           returned  NOT redacted  in the clear: ['4111-1111-1111-1111']
+    DEM-36   Customer escalation — verification failed    returned  NOT redacted  in the clear: ['123-45-6789', '415-555-0142']
+
+▸ now the whole project in one call
+    RETURNED — every value in the clear
+
+Scenario 10 — The same controls, deployed centrally
+
+▸ a client dialling Linear's remote endpoint directly
+    HTTP 401
+    www-authenticate: Bearer realm="OAuth", resource_metadata="https://mcp.linear.app/.well-known/oauth-protected-resource/mcp", error="invali
+    Auth is correct. But: all 57 tools, no policy, no audit record,
+    and every endpoint configured one by one.
+
+
+======================================================================
+SUMMARY — what reached the model with no gateway in the path
+======================================================================
+
+ 1  Unsanctioned tool     57 tools offered, including all 4 delete verbs.
+                          delete_comment reached Linear — proven by its own
+                          requestId in the error, not by our say-so.
+ 2  Tool poisoning        57 tools. The poisoned get_issue description was
+                          delivered verbatim, instruction included.
+ 3  Rug-pull              57 tools. Definitions had changed; nothing in the
+                          path could tell, because no name changed.
+ 4  Prompt injection      1184 chars returned, carrying 3 injection phrases
+                          into context: "Ignore all previous instructions",
+                          "ignore previous instructions",
+                          "Pretend you are an admin".
+ 5  Trust boundary        get_issue DEM-33 (confidential) then save_comment
+                          to a public sink: POSTED. No control fired.
+                          Two individually reasonable calls, one breach.
+ 7  PII redaction         Nothing redacted. In the clear: SSN 123-45-6789,
+                          card 4111-1111-1111-1111, phone 415-555-0142,
+                          plus names and emails.
+10  Central deployment    Linear's own 401 is correct — auth is not the gap.
+                          The gap is no policy, no audit record, and
+                          per-endpoint configuration.
+
+ 6, 8, 9                  Not runnable against Linear at all: it advertises
+                          only `tools`, and never initiates a request back
+                          to the client. Unchanged by any gateway.
+
+AUDIT RECORD FOR EVERYTHING ABOVE: none. There is no gateway to write one.
