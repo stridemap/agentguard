@@ -691,7 +691,7 @@ def _server_from_resource(bridge: OAuthBridge, request: Request, resource: str |
 
 
 async def swap_authorization(
-    bridge: OAuthBridge, presented: str | None
+    bridge: OAuthBridge, presented: str | None, server_name: str | None = None
 ) -> tuple[str | None, Grant | None]:
     """Trade a client's MiniGate token for the upstream credential it maps to.
 
@@ -709,6 +709,17 @@ async def swap_authorization(
         return None, None
     if grant.access_is_expired():
         bridge.store.revoke(grant.access_token or "")
+        return None, None
+
+    # A grant authorizes one upstream, not the gateway. Without this check a token
+    # issued for one server is accepted at another and that server's credential is
+    # forwarded to an endpoint it was never issued for — the upstream would refuse it,
+    # but the refusal belongs here, where the authorization boundary actually is.
+    if server_name is not None and grant.server_name != server_name:
+        logger.bind(module="minigate.bridge").warning(
+            "Refusing a token issued for {held} presented against {wanted}",
+            held=grant.server_name, wanted=server_name,
+        )
         return None, None
 
     if grant.upstream_needs_refresh() and not await bridge.refresh_upstream(grant):

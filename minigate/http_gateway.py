@@ -22,6 +22,7 @@ or run the upstream in a mode that accepts the gateway as an audience.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import hashlib
 import json
@@ -172,6 +173,9 @@ def _govern_outbound(
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Apply client-to-server governance.
 
+    Synchronous and CPU-bound: DLP and injection scanning dominate it. Callers on the
+    event loop must dispatch this to a worker thread — see `_govern_outbound_async`.
+
     Returns:
         (to_forward, answered_locally) — blocked calls never reach the upstream, and
         their synthetic responses go straight back to the client.
@@ -300,6 +304,24 @@ async def _warm_verdicts(
         )
 
 
+async def _govern_outbound_async(
+    core: GatewayCore, router: MessageRouter, messages: list[dict[str, Any]]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Govern a client-to-server batch without blocking the event loop.
+
+    Scanning a single tool result costs tens of milliseconds, almost all of it inside
+    Presidio and the injection patterns. Run inline on the loop, concurrent requests
+    serialise behind each other and the gateway's throughput collapses to one scan at a
+    time no matter how many clients are connected — measured at eight concurrent calls
+    taking eight times one call.
+
+    A thread is the right tool rather than a process: the work is in C extensions that
+    release the GIL, so threads genuinely overlap. `GatewayCore` is already driven from
+    threads by the stdio proxy, so this adds no new concurrency assumption.
+    """
+    return await asyncio.to_thread(_govern_outbound, core, router, messages)
+
+
 async def _govern_inbound(
     app: GatewayApp,
     core: GatewayCore,
@@ -315,7 +337,7 @@ async def _govern_inbound(
     exactly as a client would answer it.
     """
     if is_request(msg):
-        rejection = core.on_server_request(msg)
+        rejection = await asyncio.to_thread(core.on_server_request, msg)
         if rejection is None:
             router.note_server_request(msg)
             return msg
@@ -328,7 +350,8 @@ async def _govern_inbound(
         return None
 
     pending = router.take_client_request(msg["id"]) if is_response(msg) else None
-    return core.on_server_message(
+    return await asyncio.to_thread(
+        core.on_server_message,
         msg,
         pending.method if pending else None,
         pending.tool if pending else None,
@@ -573,7 +596,7 @@ def create_app(app_state: GatewayApp) -> FastAPI:
         # here, so the upstream is never contacted on its behalf.
         if app_state.uses_bridge(name):
             upstream_auth, grant = await swap_authorization(
-                app_state.bridge, request.headers.get("authorization")
+                app_state.bridge, request.headers.get("authorization"), name
             )
             if upstream_auth is None:
                 metadata = (
@@ -599,7 +622,7 @@ def create_app(app_state: GatewayApp) -> FastAPI:
         # is about to judge against. See _warm_verdicts.
         await _warm_verdicts(app_state, core, server, messages, headers)
 
-        forward, answered = _govern_outbound(core, router, messages)
+        forward, answered = await _govern_outbound_async(core, router, messages)
 
         if not forward:
             # Everything was blocked here, so nothing needs to reach the upstream at all.

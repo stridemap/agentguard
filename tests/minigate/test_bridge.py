@@ -927,3 +927,128 @@ def test_the_bridged_server_still_requires_one_of_our_tokens(mixed, upstream):
         r = c.post("/mcp/vendor", json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
                    headers={"Authorization": "Bearer caller-own-token"})
     assert r.status_code == 401
+
+
+# ── two bridged upstreams behind one gateway ─────────────────────────
+#
+# MiniGate is one authorization server to its clients, and a separate OAuth client at
+# each vendor. Those are different layers, and the distinction is the whole design.
+
+
+LINEAR_LIKE = "https://alpha.example/mcp"
+JIRA_LIKE = "https://beta.example/mcp"
+
+
+class TwoVendors:
+    """Two independent upstreams, each with its own authorization server."""
+
+    def __init__(self) -> None:
+        self.registered: list[str] = []
+        self.authorized: list[tuple[str, str]] = []   # (host, resource)
+
+    def handler(self, request: httpx.Request) -> httpx.Response:
+        host, path = request.url.host, request.url.path
+        if path.startswith("/.well-known/oauth-protected-resource"):
+            return httpx.Response(200, json={
+                "resource": f"https://{host}/mcp",
+                "authorization_servers": [f"https://{host}"],
+            })
+        if path == "/.well-known/oauth-authorization-server":
+            return httpx.Response(200, json={
+                "issuer": f"https://{host}",
+                "authorization_endpoint": f"https://{host}/authorize",
+                "token_endpoint": f"https://{host}/token",
+                "registration_endpoint": f"https://{host}/register",
+                "scopes_supported": ["read", "write"],
+            })
+        if path == "/register":
+            self.registered.append(host)
+            return httpx.Response(201, json={"client_id": f"minigate-at-{host}"})
+        if path == "/token":
+            params = {k: v[0] for k, v in parse_qs(request.content.decode()).items()}
+            self.authorized.append((host, params.get("resource", "")))
+            return httpx.Response(200, json={
+                "access_token": f"{host}-upstream-token", "token_type": "bearer",
+            })
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": {"tools": []}})
+
+
+@pytest.fixture
+def two_vendors(tmp_path):
+    from minigate.bridge import OAuthBridge
+
+    policy = tmp_path / "p.yaml"
+    policy.write_text(POLICY_YAML, encoding="utf-8")
+    vendors = TwoVendors()
+    config = GatewayConfig(
+        http=HttpSettings(public_url=GATEWAY, auth=AuthSettings(mode="bridge", require=True)),
+        servers={"alpha": ServerConfig(url=LINEAR_LIKE), "beta": ServerConfig(url=JIRA_LIKE)},
+    )
+    cores = {
+        n: GatewayCore(server=n, policy=PolicyEngine(str(policy)),
+                       guardrails=Guardrails(DLPSettings(enabled=False),
+                                             InjectionSettings(enabled=False)))
+        for n in ("alpha", "beta")
+    }
+    bridge = OAuthBridge(config, InMemoryGrantStore(),
+                         client=httpx.AsyncClient(transport=httpx.MockTransport(vendors.handler)))
+    app = GatewayApp(config=config, cores=cores, bridge=bridge,
+                     client=httpx.AsyncClient(transport=httpx.MockTransport(vendors.handler)))
+    return app, vendors
+
+
+def test_both_servers_share_one_minigate_authorization_server(two_vendors):
+    """Downstream there is one AS: a client registers once, with us."""
+    app, _ = two_vendors
+    with TestClient(create_app(app)) as c:
+        alpha = c.get("/.well-known/oauth-protected-resource/mcp/alpha").json()
+        beta = c.get("/.well-known/oauth-protected-resource/mcp/beta").json()
+        meta = c.get("/.well-known/oauth-authorization-server").json()
+
+    assert alpha["authorization_servers"] == [GATEWAY]
+    assert beta["authorization_servers"] == [GATEWAY]
+    assert meta["issuer"] == GATEWAY          # one issuer for the whole service
+    assert alpha["resource"] != beta["resource"]   # but distinct resources
+
+
+def test_each_upstream_gets_its_own_registration_and_resource(two_vendors):
+    """Upstream, each vendor is a separate authorization server and a separate client."""
+    app, vendors = two_vendors
+    with TestClient(create_app(app), follow_redirects=False) as c:
+        client_id = _register(c)
+        for name in ("alpha", "beta"):
+            r = c.get("/oauth/authorize", params={
+                "response_type": "code", "client_id": client_id,
+                "redirect_uri": CLIENT_REDIRECT, "state": "s",
+                "code_challenge": "Z" * 43, "code_challenge_method": "S256",
+                "resource": f"{GATEWAY}/mcp/{name}",
+            })
+            assert r.status_code == 302
+            sid = parse_qs(urlparse(r.headers["location"]).query)["state"][0]
+            c.get("/oauth/callback", params={"code": "c", "state": sid})
+
+    assert sorted(vendors.registered) == ["alpha.example", "beta.example"]
+    # Each exchange asked its own vendor for its own resource.
+    assert ("alpha.example", LINEAR_LIKE) in vendors.authorized
+    assert ("beta.example", JIRA_LIKE) in vendors.authorized
+
+
+def test_a_token_for_one_server_does_not_work_against_the_other(two_vendors):
+    """A grant is bound to one upstream; it is not a key to the whole gateway."""
+    app, _ = two_vendors
+    grant = Grant(grant_id="g", client_id="cid", server_name="alpha",
+                  upstream=TokenSet(access_token="alpha-token", token_type="bearer"),
+                  access_token="ours-for-alpha")
+    app.bridge.store.put_grant(grant)
+
+    with TestClient(create_app(app)) as c:
+        ok = c.post("/mcp/alpha", json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+                    headers={"Authorization": "Bearer ours-for-alpha"})
+        crossed = c.post("/mcp/beta", json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+                         headers={"Authorization": "Bearer ours-for-alpha"})
+
+    assert ok.status_code == 200, "the token must work against the server it was issued for"
+    assert crossed.status_code == 401, (
+        "a token issued for alpha must not authorize beta — otherwise alpha's upstream "
+        "credential is forwarded to an endpoint it was never issued for"
+    )
