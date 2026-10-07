@@ -12,6 +12,8 @@
 #   REGISTRY_MODE    off | observe | enforce                         default: enforce
 #   UPSTREAM_SCOPES  comma-free YAML list of OAuth scopes            default: read, write
 #   AUTH_REQUIRE     true | false — see the note on auth below       default: true
+#   AUTH_MODE        passthrough | bridge — see the note below        default: bridge
+#   MINIGATE_GRANT_KEY  Fernet key encrypting stored grants           (bridge mode only)
 #
 # An unset variable without a default is a startup error, not an empty string. A gateway
 # advertising public_url: "" answers OAuth discovery with a URL no client can reach, and
@@ -28,6 +30,17 @@ policy: policies/minigate.yaml
 # here beyond durability — its chain append takes pg_advisory_xact_lock, and SQLite on a
 # platform with ephemeral disk loses the audit chain on every redeploy.
 # database_url:
+
+# Grants — the upstream credentials MiniGate holds in bridge mode — live beside the audit
+# chain but in their own tables. One is a record of what happened; the other is live
+# third-party access. Rows are sealed with MINIGATE_GRANT_KEY, which is read from the
+# environment and never written to the database.
+#
+#   railway variables set --service minigate \
+#     "MINIGATE_GRANT_KEY=$(python -c 'from minigate.bridge_sql_store import generate_key; print(generate_key())')"
+#
+# Rotating that key invalidates every stored grant and every partner re-consents. Treat
+# it as a one-way door once anyone is live.
 
 # MiniGate's own faults must not break the partner's agent.
 fail_closed: false
@@ -53,8 +66,16 @@ http:
   # client dialled, and a resource identifier the client does not recognise fails discovery.
   public_url: "${PUBLIC_URL}"
   upstream_timeout_seconds: 120
+  # passthrough relays the caller's token and mints nothing — the original design, and
+  # still correct when the upstream's authorization server will issue a token whose
+  # audience is this gateway. Linear's will not: it serves exactly one resource and RFC
+  # 9728 forbids us advertising that resource as ours, so a relayed token is refused.
+  #
+  # bridge makes MiniGate the authorization server to its clients and an OAuth client to
+  # the upstream, so each leg requests a resource its own server owns. The cost is that
+  # MiniGate then holds credentials — see MINIGATE_GRANT_KEY below.
   auth:
-    mode: passthrough      # MiniGate mints and stores no tokens; the vendor authorizes
+    mode: "${AUTH_MODE:-bridge}"
     # With `true`, MiniGate issues the 401 and advertises its OWN resource URI. A client
     # honouring RFC 8707 then binds the token to that URI, and an upstream that validates
     # audience strictly rejects it — the failure appears AFTER a successful vendor login.
@@ -135,6 +156,11 @@ servers:
   #
   # Mirrors https://drivemcp.googleapis.com/.well-known/oauth-protected-resource/mcp/v1
   gdrive:
+    # Google advertises no registration_endpoint, so MiniGate cannot register itself as
+    # an OAuth client there and bridge mode is unavailable. Passthrough is correct here
+    # anyway: Google issues tokens for its own resource, which is the case passthrough
+    # was designed for.
+    auth_mode: passthrough
     url: https://drivemcp.googleapis.com/mcp/v1
     authorization_servers: ["https://accounts.google.com/"]
     scopes:

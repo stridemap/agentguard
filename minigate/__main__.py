@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -305,9 +306,22 @@ def _cmd_serve(args: argparse.Namespace) -> int:
 
         # Grants live beside the audit chain but in their own store — one is a record of
         # what happened, the other holds live third-party credentials.
-        grants_url = config.database_url
-        if not grants_url or not grants_url.startswith(("postgres://", "postgresql://")):
+        # MINIGATE_GRANT_URL first, then the config, then whatever the audit chain uses.
+        # The hosted config deliberately leaves database_url unset so the audit store
+        # reads DATABASE_URL itself — without this, grants would silently land in a
+        # SQLite file on an ephemeral disk and every redeploy would lose them.
+        grants_url = (
+            os.environ.get("MINIGATE_GRANT_URL")
+            or config.database_url
+            or os.environ.get("DATABASE_URL")
+        )
+        if not grants_url:
             grants_url = "minigate-grants.db"
+            logger.bind(module="minigate").warning(
+                "No grant store URL; falling back to {path}. On a platform with "
+                "ephemeral disk this loses every grant on redeploy.",
+                path=grants_url,
+            )
         bridge = OAuthBridge(
             config,
             SqlGrantStore(grants_url),
