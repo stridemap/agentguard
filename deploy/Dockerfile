@@ -67,7 +67,12 @@ COPY deploy/minigate.hosted.yaml ./minigate.hosted.yaml
 
 # The registry file and the lineage taint store are mutable state, so they live on the
 # mounted volume rather than in the read-only image. Seeded on first boot by the entrypoint.
-COPY minigate-registry.yaml /app/seed/minigate-registry.yaml
+# The seed is an EMPTY registry, not a snapshot of anyone's approvals. Baking a
+# particular partner's approved definitions into a shared image makes the image
+# partner-specific and silently re-asserts stale approvals on every redeploy. A fresh
+# deployment starts with nothing approved and is populated by `minigate registry sync`,
+# which is the only step that records who reviewed what and when.
+RUN mkdir -p /app/seed && printf 'version: 1\ntools: []\n' > /app/seed/minigate-registry.yaml
 COPY deploy/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh && mkdir -p /data && chown minigate:minigate /data
 
