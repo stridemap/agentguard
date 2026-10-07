@@ -1,0 +1,13 @@
+# Variables that were set on minigate-demo/minigate before the project was
+# deleted on 2026-10-07. Names only — no values were recorded.
+# RAILWAY_* are injected by the platform and do not need re-setting.
+
+AUTH_REQUIRE=
+DATABASE_URL=
+MINIGATE_STATE_DIR=
+PARTNER=
+PUBLIC_URL=
+REGISTRY_MODE=
+SERVER_NAME=
+MINIGATE_GRANT_KEY=     # new: required when AUTH_MODE=bridge
+AUTH_MODE=              # new: bridge | passthrough (default bridge)
