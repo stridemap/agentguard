@@ -218,7 +218,7 @@ def _cmd_tools(args: argparse.Namespace) -> int:
     policy = PolicyEngine(policy_path)
     guardrails = Guardrails(config.dlp, config.injection)
 
-    advertised = fetch_tools(_resolve_upstream(args, config))
+    advertised = _advertised_tools(args, config)
 
     rows = []
     for tool in advertised:
@@ -387,10 +387,60 @@ def _load_registry(args: argparse.Namespace, config: GatewayConfig) -> ToolRegis
     return ToolRegistry(path=args.registry or config.registry.path, mode=RegistryMode.OBSERVE)
 
 
+def _advertised_tools(args: argparse.Namespace, config: GatewayConfig) -> list[dict]:
+    """Read a server's manifest, over stdio or over HTTP as the server requires.
+
+    For a remote server the gateway borrows a credential it already holds: any user who
+    has authorized that server has consented to exactly this read, and a manifest is the
+    same whoever asks. That keeps an operator out of the credential-handling business —
+    nobody has to obtain or paste a token to approve tool definitions.
+    """
+    server = config.servers.get(args.server_name)
+    if server is None or not server.is_remote:
+        return fetch_tools(_resolve_upstream(args, config))
+
+    from minigate.bridge_sql_store import SqlGrantStore, StoreKeyError
+    from minigate.discovery import fetch_tools_http
+
+    grants_url = (
+        os.environ.get("MINIGATE_GRANT_URL")
+        or config.database_url
+        or os.environ.get("DATABASE_URL")
+        or "minigate-grants.db"
+    )
+    try:
+        store = SqlGrantStore(grants_url)
+    except StoreKeyError as e:
+        msg = (
+            f"{e} The registry for a remote server is read with a credential a user "
+            f"already authorized, which means opening the grant store."
+        )
+        raise DiscoveryError(msg) from e
+
+    try:
+        grant = store.newest_grant_for(args.server_name)
+        if grant is None:
+            msg = (
+                f"No live authorization for {args.server_name!r}. A remote server's "
+                f"manifest is read with a credential a user has consented to, so "
+                f"someone must authorize through the gateway before the registry can "
+                f"be synced."
+            )
+            raise DiscoveryError(msg)
+        logger.bind(module="minigate").info(
+            "Reading {server}'s manifest with {principal}'s authorization",
+            server=args.server_name,
+            principal=grant.principal,
+        )
+        return fetch_tools_http(server.url or "", grant.upstream.authorization_header)
+    finally:
+        store.close()
+
+
 def _cmd_registry_sync(args: argparse.Namespace) -> int:
     config = load_config(args.config) if args.config else GatewayConfig()
     registry = _load_registry(args, config)
-    tools = fetch_tools(_resolve_upstream(args, config))
+    tools = _advertised_tools(args, config)
 
     changes = registry.diff(args.server_name, tools)
     for label in ("new", "changed", "unchanged", "missing"):
@@ -423,7 +473,7 @@ def _cmd_registry_sync(args: argparse.Namespace) -> int:
 def _cmd_registry_diff(args: argparse.Namespace) -> int:
     config = load_config(args.config) if args.config else GatewayConfig()
     registry = _load_registry(args, config)
-    changes = registry.diff(args.server_name, fetch_tools(_resolve_upstream(args, config)))
+    changes = registry.diff(args.server_name, _advertised_tools(args, config))
 
     print(json.dumps(changes, indent=2))  # noqa: T201
     # Non-zero when review is needed, so this can gate a CI check.

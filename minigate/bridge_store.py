@@ -199,6 +199,7 @@ class GrantStore(Protocol):
     def take_by_code(self, code: str) -> Grant | None: ...
     def get_by_access_token(self, access_token: str) -> Grant | None: ...
     def get_by_refresh_token(self, refresh_token: str) -> Grant | None: ...
+    def newest_grant_for(self, server_name: str) -> Grant | None: ...
     def revoke(self, access_token: str) -> bool: ...
 
 
@@ -313,6 +314,21 @@ class InMemoryGrantStore:
     def get_by_refresh_token(self, refresh_token: str) -> Grant | None:
         with self._lock:
             return self._by_refresh.get(refresh_token)
+
+    def newest_grant_for(self, server_name: str) -> Grant | None:
+        """The most recent live grant for a server, for reading its manifest.
+
+        A tool manifest is the same whoever asks, so any authorized credential can read
+        it. The newest is chosen because it is the least likely to have expired — this
+        borrows a credential a user already consented to, rather than asking an operator
+        to obtain one by hand.
+        """
+        with self._lock:
+            candidates = [
+                g for g in self._by_access.values()
+                if g.server_name == server_name and not g.access_is_expired()
+            ]
+        return max(candidates, key=lambda g: g.created_at, default=None)
 
     def revoke(self, access_token: str) -> bool:
         """Drop a grant entirely — both halves of it.

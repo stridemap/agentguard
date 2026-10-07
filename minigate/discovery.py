@@ -1,8 +1,14 @@
 """Minimal MCP client used to read a server's tool manifest.
 
-Only what `minigate registry sync` needs: complete the handshake, page through
-`tools/list`, and exit. This is a read of the manifest, not a session — no tool is
-ever called, so pointing it at an unfamiliar server is safe.
+Only what `minigate registry sync` needs: page through `tools/list` and exit. This is a
+read of the manifest, not a session — no tool is ever called, so pointing it at an
+unfamiliar server is safe.
+
+Two transports, because the registry has to be populatable for both deployment shapes.
+`fetch_tools` spawns a stdio server; `fetch_tools_http` reads a remote one over
+Streamable HTTP. The second exists because a hosted gateway fronts remote servers
+exclusively, and without it the control that defends against rug-pulls could not be
+populated for exactly the deployment it was built to protect.
 """
 
 from __future__ import annotations
@@ -151,3 +157,112 @@ def _now() -> float:
     import time
 
     return time.monotonic()
+
+
+def fetch_tools_http(
+    url: str,
+    authorization: str,
+    timeout: float = _READ_TIMEOUT_SECONDS,
+    client: Any = None,
+) -> list[dict[str, Any]]:
+    """Read a remote server's tool manifest over Streamable HTTP.
+
+    No `initialize` is sent. A stateless server needs none, and a stateful one will
+    answer `tools/list` on its own terms — this is a manifest read, not a session, and
+    pretending otherwise would mean minting a session just to throw it away.
+
+    Args:
+        url: The remote MCP endpoint.
+        authorization: An Authorization header value with rights to list tools.
+        timeout: Seconds per request.
+        client: An httpx.Client, for tests.
+
+    Raises:
+        DiscoveryError: If the server could not be read.
+    """
+    import httpx
+
+    owns = client is None
+    client = client or httpx.Client(follow_redirects=False, timeout=timeout)
+    headers = {
+        "Authorization": authorization,
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+        "MCP-Protocol-Version": _PROTOCOL_VERSION,
+    }
+
+    tools: list[dict[str, Any]] = []
+    cursor: str | None = None
+    try:
+        for page in range(_MAX_PAGES):
+            body = {
+                "jsonrpc": "2.0",
+                "id": 100 + page,
+                "method": "tools/list",
+                "params": {"cursor": cursor} if cursor else {},
+            }
+            try:
+                response = client.post(url, json=body, headers=headers)
+            except Exception as e:
+                msg = f"Could not reach {url}: {e}"
+                raise DiscoveryError(msg) from e
+
+            if response.status_code != 200:
+                challenge = response.headers.get("www-authenticate", "")
+                detail = f" ({challenge[:120]})" if challenge else ""
+                msg = f"{url} returned {response.status_code} for tools/list{detail}"
+                raise DiscoveryError(msg)
+
+            result = _result_from(response)
+            if result is None:
+                msg = f"{url} returned no JSON-RPC result for tools/list"
+                raise DiscoveryError(msg)
+            if "error" in result:
+                msg = f"{url} returned an error for tools/list: {result['error']}"
+                raise DiscoveryError(msg)
+
+            page_tools = (result.get("result") or {}).get("tools")
+            if not isinstance(page_tools, list):
+                msg = f"{url} returned a tools/list result with no tools array"
+                raise DiscoveryError(msg)
+            tools.extend(t for t in page_tools if isinstance(t, dict))
+
+            cursor = (result.get("result") or {}).get("nextCursor")
+            if not cursor:
+                return tools
+
+        logger.bind(module="minigate.discovery").warning(
+            "Stopped paging tools/list after {pages} pages — manifest may be incomplete",
+            pages=_MAX_PAGES,
+        )
+        return tools
+    finally:
+        if owns:
+            client.close()
+
+
+def _result_from(response: Any) -> dict[str, Any] | None:
+    """Pull the JSON-RPC message out of a JSON or SSE response."""
+    content_type = response.headers.get("content-type", "")
+    candidates: list[Any] = []
+    if "text/event-stream" in content_type:
+        for block in response.text.split("\n\n"):
+            data = "\n".join(
+                line[5:].lstrip() for line in block.splitlines() if line.startswith("data:")
+            )
+            if data:
+                try:
+                    candidates.append(json.loads(data))
+                except json.JSONDecodeError:
+                    continue
+    else:
+        try:
+            candidates.append(response.json())
+        except ValueError:
+            return None
+
+    for item in candidates:
+        for msg in item if isinstance(item, list) else [item]:
+            if isinstance(msg, dict) and ("result" in msg or "error" in msg):
+                return msg
+    return None

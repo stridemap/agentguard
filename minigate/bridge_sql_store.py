@@ -348,6 +348,19 @@ class SqlGrantStore:
         rows = self._execute(self._SELECT + "refresh_token = ?", (refresh_token,))
         return self._hydrate(rows[0]) if rows else None
 
+    def newest_grant_for(self, server_name: str) -> Grant | None:
+        """The most recent live grant for a server, for reading its manifest."""
+        rows = self._execute(
+            self._SELECT + "server_name = ? AND access_token IS NOT NULL "
+            "ORDER BY created_at DESC",
+            (server_name,),
+        )
+        for row in rows:
+            grant = self._hydrate(row)
+            if not grant.access_is_expired():
+                return grant
+        return None
+
     def revoke(self, access_token: str) -> bool:
         """Delete the whole grant, not just the access token.
 
