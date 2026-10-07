@@ -846,3 +846,84 @@ def test_a_broken_sink_does_not_break_authorization(audited):
     with TestClient(create_app(app_state), follow_redirects=False) as c:
         issued, _ = _full_token(c, None)
     assert issued["access_token"]
+
+
+# ── per-server mode ──────────────────────────────────────────────────
+#
+# A gateway fronting several upstreams generally needs both modes: bridge requires the
+# upstream to let MiniGate register as an OAuth client, and not every vendor does.
+# Google advertises no registration endpoint at all.
+
+
+@pytest.fixture
+def mixed(tmp_path, upstream):
+    """One bridged server and one passthrough server behind the same gateway."""
+    from minigate.bridge import OAuthBridge
+
+    policy = tmp_path / "policy.yaml"
+    policy.write_text(POLICY_YAML, encoding="utf-8")
+    config = GatewayConfig(
+        http=HttpSettings(public_url=GATEWAY, auth=AuthSettings(mode="bridge", require=True)),
+        servers={
+            "vendor": ServerConfig(url=UPSTREAM),                       # inherits bridge
+            "nodcr": ServerConfig(url="https://nodcr.example/mcp",      # cannot be bridged
+                                  auth_mode="passthrough",
+                                  authorization_servers=["https://accounts.nodcr.example"]),
+        },
+    )
+
+    def core_for(name):
+        return GatewayCore(
+            server=name, policy=PolicyEngine(str(policy)),
+            guardrails=Guardrails(DLPSettings(enabled=False), InjectionSettings(enabled=False)),
+        )
+
+    bridge = OAuthBridge(
+        config, InMemoryGrantStore(),
+        client=httpx.AsyncClient(transport=httpx.MockTransport(upstream.handler)),
+    )
+    return GatewayApp(
+        config=config, cores={"vendor": core_for("vendor"), "nodcr": core_for("nodcr")},
+        client=httpx.AsyncClient(transport=httpx.MockTransport(upstream.handler)),
+        bridge=bridge,
+    )
+
+
+def test_each_server_advertises_its_own_authorization_server(mixed):
+    """The bridged one points at us; the other keeps pointing at its vendor."""
+    with TestClient(create_app(mixed)) as c:
+        bridged = c.get("/.well-known/oauth-protected-resource/mcp/vendor").json()
+        direct = c.get("/.well-known/oauth-protected-resource/mcp/nodcr").json()
+
+    assert bridged["authorization_servers"] == [GATEWAY]
+    assert direct["authorization_servers"] == ["https://accounts.nodcr.example"]
+
+
+def test_authorizing_against_a_non_bridged_server_is_refused_clearly(mixed):
+    """Better than failing later at registration with 'no registration_endpoint'."""
+    with TestClient(create_app(mixed), follow_redirects=False) as c:
+        client_id = _register(c)
+        r = c.get("/oauth/authorize", params={
+            "response_type": "code", "client_id": client_id,
+            "redirect_uri": CLIENT_REDIRECT, "state": "s",
+            "code_challenge": "Z" * 43, "code_challenge_method": "S256",
+            "resource": f"{GATEWAY}/mcp/nodcr",
+        })
+    assert r.status_code == 400
+    assert r.json()["error"] == "invalid_target"
+    assert "not configured for bridge mode" in r.json()["error_description"]
+
+
+def test_a_passthrough_server_relays_the_callers_token_verbatim(mixed, upstream):
+    """Switching one server to bridge must not change how the other authenticates."""
+    with TestClient(create_app(mixed)) as c:
+        c.post("/mcp/nodcr", json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+               headers={"Authorization": "Bearer caller-own-token"})
+    assert upstream.mcp_headers.get("authorization") == "Bearer caller-own-token"
+
+
+def test_the_bridged_server_still_requires_one_of_our_tokens(mixed, upstream):
+    with TestClient(create_app(mixed)) as c:
+        r = c.post("/mcp/vendor", json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+                   headers={"Authorization": "Bearer caller-own-token"})
+    assert r.status_code == 401

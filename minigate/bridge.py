@@ -462,6 +462,17 @@ def bridge_router(bridge: OAuthBridge) -> APIRouter:
         if server is None or not server.is_remote:
             return _oauth_error("invalid_target", f"No remote server named {server_name!r}")
 
+        mode = server.auth_mode or bridge.config.http.auth.mode
+        if mode != "bridge":
+            # Refuse here with a clear reason rather than failing later at registration:
+            # an upstream that cannot be bridged usually cannot register us as a client,
+            # and "no registration_endpoint" is an opaque way to learn that.
+            return _oauth_error(
+                "invalid_target",
+                f"Server {server_name!r} is not configured for bridge mode; "
+                f"authorize against its own authorization server instead",
+            )
+
         try:
             flow = await bridge.upstream_flow(request, server, server_name)
         except BridgeError as e:

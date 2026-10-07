@@ -264,6 +264,18 @@ class ServerConfig(BaseModel):
         default_factory=list, description="argv of the upstream stdio MCP server"
     )
     url: str | None = Field(default=None, description="Endpoint of a remote MCP server")
+    auth_mode: str | None = Field(
+        default=None,
+        description="passthrough | bridge. Falls back to http.auth.mode when unset.",
+    )
+    """Per-server, because the right answer differs by upstream.
+
+    Bridge mode requires MiniGate to register itself as an OAuth client with the
+    upstream's authorization server. Linear supports dynamic registration; Google does
+    not advertise a registration endpoint at all, so a gateway fronting both cannot use
+    one mode for both. Setting this globally would mean breaking one upstream to fix the
+    other.
+    """
     authorization_servers: list[str] = Field(
         default_factory=list,
         description="Issuers advertised to clients for this server, normally the upstream's own",

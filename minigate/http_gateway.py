@@ -95,6 +95,18 @@ class GatewayApp:
             raise UnknownServerError(msg)
         return server
 
+    def uses_bridge(self, name: str) -> bool:
+        """Whether this server authenticates callers through MiniGate's own AS.
+
+        Per-server: an upstream that does not support dynamic client registration cannot
+        be bridged, and a gateway fronting several upstreams will generally need both.
+        """
+        if self.bridge is None:
+            return False
+        server = self.config.servers.get(name)
+        mode = (server.auth_mode if server and server.auth_mode else self.config.http.auth.mode)
+        return mode == "bridge"
+
     def core(self, name: str) -> GatewayCore:
         core = self.cores.get(name)
         if core is None:
@@ -464,7 +476,7 @@ def create_app(app_state: GatewayApp) -> FastAPI:
         except UnknownServerError as e:
             return JSONResponse({"error": str(e)}, status_code=404)
 
-        if app_state.bridge is not None:
+        if app_state.uses_bridge(name):
             # We issue the client's token now, so we are its authorization server. This
             # is also what makes the advertised resource honest: the client really does
             # authenticate to us.
@@ -559,7 +571,7 @@ def create_app(app_state: GatewayApp) -> FastAPI:
         # upstream. Trade it for the credential it maps to before anything — including
         # the verdict warm — talks to the upstream. An unrecognised token is challenged
         # here, so the upstream is never contacted on its behalf.
-        if app_state.bridge is not None:
+        if app_state.uses_bridge(name):
             upstream_auth, grant = await swap_authorization(
                 app_state.bridge, request.headers.get("authorization")
             )
