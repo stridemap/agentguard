@@ -55,6 +55,9 @@ dashboard/.streamlit/secrets.toml
 *.db
 *.sqlite
 *.sqlite3
+# Hand-made copies taken before a migration or a fix keep the data but lose the
+# bare .db suffix, so they slip past the rules above.
+*.db.*
 
 # ── Docs (private — not published to GitHub) ──────
 # ADRs are the exception: decision records must be version-controlled.
@@ -66,3 +69,8 @@ docs/*
 *.bak
 *.tmp
 web/tsconfig.tsbuildinfo
+
+# ── Marketing & demo scaffolding (private — not published) ─
+# The a16z Speedrun suite: ~1 GB of assets, built pitch material and vendored
+# dependencies. It consumes agentguard as-shipped and is not part of the library.
+marketing/
