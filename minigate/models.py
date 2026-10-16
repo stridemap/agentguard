@@ -140,6 +140,7 @@ class McpEvent(BaseModel):
             latency_ms=self.latency_ms,
             policy_result=self._policy_result(),
             risk_flags=[RiskFlag.PII_DETECTED] if self.dlp_entities else [],
+            dlp_entities=list(self.dlp_entities),
             completed=not is_request,
         )
         event.input_hash = self.compute_hash(event.input_str)

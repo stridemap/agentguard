@@ -274,11 +274,14 @@ class AgentGuardInterceptor(BaseCallbackHandler):
             # DLP scan on input (if scanner configured)
             if self._dlp_scanner is not None:
                 dlp_result = self._dlp_scanner.scan(input_str, direction="input")
-                if (
-                    dlp_result.entity_count > 0
-                    and RiskFlag.PII_DETECTED not in event.risk_flags
-                ):
-                    event.risk_flags.append(RiskFlag.PII_DETECTED)
+                if dlp_result.entity_count > 0:
+                    if RiskFlag.PII_DETECTED not in event.risk_flags:
+                        event.risk_flags.append(RiskFlag.PII_DETECTED)
+                    # Record which types, so a rule can match one by name.
+                    for entity in getattr(dlp_result, "entities_found", []) or []:
+                        name = getattr(entity, "entity_type", entity)
+                        if name and str(name) not in event.dlp_entities:
+                            event.dlp_entities.append(str(name))
 
             # Injection scan on input (if detector configured)
             if self._injection_detector is not None:
@@ -367,11 +370,14 @@ class AgentGuardInterceptor(BaseCallbackHandler):
             # DLP scan on output (if scanner configured)
             if self._dlp_scanner is not None:
                 dlp_result = self._dlp_scanner.scan(output_text, direction="output")
-                if (
-                    dlp_result.entity_count > 0
-                    and RiskFlag.PII_DETECTED not in event.risk_flags
-                ):
-                    event.risk_flags.append(RiskFlag.PII_DETECTED)
+                if dlp_result.entity_count > 0:
+                    if RiskFlag.PII_DETECTED not in event.risk_flags:
+                        event.risk_flags.append(RiskFlag.PII_DETECTED)
+                    # Record which types, so a rule can match one by name.
+                    for entity in getattr(dlp_result, "entities_found", []) or []:
+                        name = getattr(entity, "entity_type", entity)
+                        if name and str(name) not in event.dlp_entities:
+                            event.dlp_entities.append(str(name))
 
             # Check high-frequency
             if (

@@ -92,6 +92,15 @@ class AgentEvent(BaseModel):
     risk_flags: list[RiskFlag] = Field(
         default_factory=list, description="Auto-detected risk indicators"
     )
+    dlp_entities: list[str] = Field(
+        default_factory=list,
+        description="PII entity types the scanner found, e.g. US_SSN. Policy rules match "
+        "on these by name.",
+    )
+    """Carried separately from `risk_flags` because that is a closed enum of generic
+    indicators — it can record *that* PII was present, never *which kind*. A rule written
+    as `data_pattern: US_SSN` needs the latter, and redaction removes the value from the
+    payload before policy runs, so the text is no longer a reliable place to look."""
     policy_result: PolicyResult = Field(
         default=PolicyResult.PENDING, description="Policy evaluation outcome"
     )

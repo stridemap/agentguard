@@ -332,9 +332,21 @@ class PolicyEngine:
 
     @staticmethod
     def _matches_data_pattern(pattern: str, event: AgentEvent) -> bool:
-        """Check if event has a matching PII data pattern in risk flags."""
-        # Check if the pattern appears in risk_flags (set by DLP scanner)
+        """Whether the event carries the named PII entity type.
+
+        Checked in order of reliability. The scanner's own findings come first: they
+        survive redaction, which the raw-text fallback does not — a redacted payload has
+        had the value replaced, so a rule that depended on matching the digits would
+        silently stop firing exactly when redaction was switched on.
+        """
         pattern_lower = pattern.lower()
+
+        # What the DLP scanner reported, by entity type.
+        for entity in event.dlp_entities:
+            if pattern_lower == str(entity).lower():
+                return True
+
+        # Generic risk flags, for callers that record no entity types.
         for flag in event.risk_flags:
             if pattern_lower in str(flag).lower():
                 return True
