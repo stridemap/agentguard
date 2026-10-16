@@ -8,7 +8,13 @@ import json
 import pytest
 
 from agentguard.policy_engine import PolicyEngine
-from minigate.config import ConfigError, DLPSettings, GatewayConfig, InjectionSettings, load_config
+from minigate.config import (
+    ConfigError,
+    DLPSettings,
+    GatewayConfig,
+    InjectionSettings,
+    load_config,
+)
 from minigate.core import GatewayCore
 from minigate.guardrails import Guardrails
 from minigate.proxy import StdioProxy
@@ -31,7 +37,9 @@ def core(tmp_path):
     return GatewayCore(
         server="fs",
         policy=PolicyEngine(str(path)),
-        guardrails=Guardrails(DLPSettings(enabled=False), InjectionSettings(enabled=False)),
+        guardrails=Guardrails(
+            DLPSettings(enabled=False), InjectionSettings(enabled=False)
+        ),
     )
 
 
@@ -64,7 +72,14 @@ def _messages(stream: io.StringIO) -> list[dict]:
 
 
 def test_allowed_call_reaches_upstream(core):
-    request = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "read_file"}})
+    request = json.dumps(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": "read_file"},
+        }
+    )
     proxy = _proxy(core, client_lines=request + "\n")
 
     proxy.run()
@@ -75,7 +90,12 @@ def test_allowed_call_reaches_upstream(core):
 
 def test_blocked_call_never_reaches_upstream(core):
     request = json.dumps(
-        {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "delete_file"}}
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": "delete_file"},
+        }
     )
     proxy = _proxy(core, client_lines=request + "\n")
 
@@ -157,22 +177,42 @@ def test_tool_call_responses_carry_the_tool_name_forward(core):
     """The response handler needs the tool, not just the method, to evaluate policy."""
     seen = _capture_correlation(
         _proxy(core),
-        {"jsonrpc": "2.0", "id": 8, "method": "tools/call", "params": {"name": "read_file"}},
+        {
+            "jsonrpc": "2.0",
+            "id": 8,
+            "method": "tools/call",
+            "params": {"name": "read_file"},
+        },
         {"jsonrpc": "2.0", "id": 8, "result": {}},
     )
 
-    assert seen == {"method": "tools/call", "tool": "read_file", "uri": None, "prompt": None}
+    assert seen == {
+        "method": "tools/call",
+        "tool": "read_file",
+        "uri": None,
+        "prompt": None,
+    }
 
 
 def test_prompt_get_responses_carry_the_prompt_name_forward(core):
     """prompts/get uses params.name like tools/call — the two must not be conflated."""
     seen = _capture_correlation(
         _proxy(core),
-        {"jsonrpc": "2.0", "id": 11, "method": "prompts/get", "params": {"name": "summarize"}},
+        {
+            "jsonrpc": "2.0",
+            "id": 11,
+            "method": "prompts/get",
+            "params": {"name": "summarize"},
+        },
         {"jsonrpc": "2.0", "id": 11, "result": {}},
     )
 
-    assert seen == {"method": "prompts/get", "tool": None, "uri": None, "prompt": "summarize"}
+    assert seen == {
+        "method": "prompts/get",
+        "tool": None,
+        "uri": None,
+        "prompt": "summarize",
+    }
 
 
 def test_resource_read_responses_carry_the_uri_forward(core):
@@ -198,7 +238,9 @@ def test_resource_read_responses_carry_the_uri_forward(core):
 
 def test_uncorrelated_responses_pass_through_unfiltered(core):
     """Without a matching request the gateway must not guess — forward unchanged."""
-    response = json.dumps({"jsonrpc": "2.0", "id": 99, "result": {"tools": [{"name": "delete_file"}]}})
+    response = json.dumps(
+        {"jsonrpc": "2.0", "id": 99, "result": {"tools": [{"name": "delete_file"}]}}
+    )
     proxy = _proxy(core, server_lines=response + "\n")
 
     proxy.run()
@@ -208,12 +250,16 @@ def test_uncorrelated_responses_pass_through_unfiltered(core):
 
 
 def test_server_notifications_reach_the_client(core):
-    notification = json.dumps({"jsonrpc": "2.0", "method": "notifications/tools/list_changed"})
+    notification = json.dumps(
+        {"jsonrpc": "2.0", "method": "notifications/tools/list_changed"}
+    )
     proxy = _proxy(core, server_lines=notification + "\n")
 
     proxy.run()
 
-    assert _messages(proxy.client_out)[0]["method"] == "notifications/tools/list_changed"
+    assert (
+        _messages(proxy.client_out)[0]["method"] == "notifications/tools/list_changed"
+    )
 
 
 # ── configuration ────────────────────────────────────────────────────
@@ -302,11 +348,15 @@ def test_shipped_policy_decisions_for_realistic_tool_names(tool, expected):
     from minigate.models import Direction, McpEvent
 
     server, _, name = tool.partition(".")
-    event = McpEvent(server=server, method="tools/call", tool=name, direction=Direction.REQUEST)
+    event = McpEvent(
+        server=server, method="tools/call", tool=name, direction=Direction.REQUEST
+    )
 
     decision = PolicyEngine("policies/minigate.yaml").evaluate(event.to_agent_event())
 
-    assert decision.result == expected, f"{tool} -> {decision.result} ({decision.matched_rule})"
+    assert (
+        decision.result == expected
+    ), f"{tool} -> {decision.result} ({decision.matched_rule})"
 
 
 # ── config path resolution ───────────────────────────────────────────
@@ -314,7 +364,8 @@ def test_shipped_policy_decisions_for_realistic_tool_names(tool, expected):
 
 def test_relative_paths_resolve_against_the_config_file(tmp_path, monkeypatch):
     """MCP clients spawn servers from a working directory of their choosing — Claude
-    Desktop uses "/" — so a relative path in the config must mean relative to the file."""
+    Desktop uses "/" — so a relative path in the config must mean relative to the file.
+    """
     (tmp_path / "policies").mkdir()
     (tmp_path / "policies" / "mine.yaml").write_text("rules: []", encoding="utf-8")
     cfg = tmp_path / "minigate.yaml"

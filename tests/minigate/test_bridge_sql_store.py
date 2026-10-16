@@ -40,12 +40,19 @@ def store(db, key):
 
 def _grant(**over) -> Grant:
     base = {
-        "grant_id": "g1", "client_id": "cid", "server_name": "vendor",
+        "grant_id": "g1",
+        "client_id": "cid",
+        "server_name": "vendor",
         "upstream": TokenSet(
-            access_token=UPSTREAM_SECRET, token_type="bearer",
-            refresh_token=REFRESH_SECRET, expires_in=86400, scope="read write",
+            access_token=UPSTREAM_SECRET,
+            token_type="bearer",
+            refresh_token=REFRESH_SECRET,
+            expires_in=86400,
+            scope="read write",
         ),
-        "code": "the-code", "code_challenge": "chal", "redirect_uri": "https://c.example/cb",
+        "code": "the-code",
+        "code_challenge": "chal",
+        "redirect_uri": "https://c.example/cb",
     }
     return Grant(**{**base, **over})
 
@@ -88,12 +95,18 @@ def test_no_upstream_credential_appears_in_the_database_file(store, db):
 
 
 def test_a_session_verifier_is_not_stored_in_the_clear(store, db):
-    store.put_session(AuthSession(
-        session_id="s1", client_id="cid", server_name="vendor",
-        client_redirect_uri="https://c.example/cb", client_state="st",
-        client_code_challenge="chal", client_code_challenge_method="S256",
-        upstream_verifier=VERIFIER_SECRET,
-    ))
+    store.put_session(
+        AuthSession(
+            session_id="s1",
+            client_id="cid",
+            server_name="vendor",
+            client_redirect_uri="https://c.example/cb",
+            client_state="st",
+            client_code_challenge="chal",
+            client_code_challenge_method="S256",
+            upstream_verifier=VERIFIER_SECRET,
+        )
+    )
     assert VERIFIER_SECRET.encode() not in pathlib.Path(db).read_bytes()
 
 
@@ -130,8 +143,13 @@ def test_grants_survive_a_restart(db, key):
 
 def test_clients_survive_a_restart(db, key):
     first = SqlGrantStore(db, key=key)
-    first.put_client(RegisteredClient(
-        client_id="cid", redirect_uris=("https://c.example/cb",), client_name="Claude"))
+    first.put_client(
+        RegisteredClient(
+            client_id="cid",
+            redirect_uris=("https://c.example/cb",),
+            client_name="Claude",
+        )
+    )
     first.close()
 
     second = SqlGrantStore(db, key=key)
@@ -158,33 +176,52 @@ def test_an_expired_code_is_refused(store):
 
 
 def test_a_session_is_single_use(store):
-    store.put_session(AuthSession(
-        session_id="s1", client_id="c", server_name="v",
-        client_redirect_uri="https://c.example/cb", client_state=None,
-        client_code_challenge=None, client_code_challenge_method="S256",
-        upstream_verifier="v",
-    ))
+    store.put_session(
+        AuthSession(
+            session_id="s1",
+            client_id="c",
+            server_name="v",
+            client_redirect_uri="https://c.example/cb",
+            client_state=None,
+            client_code_challenge=None,
+            client_code_challenge_method="S256",
+            upstream_verifier="v",
+        )
+    )
     assert store.take_session("s1") is not None
     assert store.take_session("s1") is None
 
 
 def test_an_expired_session_is_refused(store):
-    store.put_session(AuthSession(
-        session_id="old", client_id="c", server_name="v",
-        client_redirect_uri="https://c.example/cb", client_state=None,
-        client_code_challenge=None, client_code_challenge_method="S256",
-        upstream_verifier="v", created_at=0.0,
-    ))
+    store.put_session(
+        AuthSession(
+            session_id="old",
+            client_id="c",
+            server_name="v",
+            client_redirect_uri="https://c.example/cb",
+            client_state=None,
+            client_code_challenge=None,
+            client_code_challenge_method="S256",
+            upstream_verifier="v",
+            created_at=0.0,
+        )
+    )
     assert store.take_session("old") is None
 
 
 def test_a_session_round_trips_every_field(store):
-    store.put_session(AuthSession(
-        session_id="s1", client_id="cid", server_name="vendor",
-        client_redirect_uri="https://c.example/cb", client_state="client-state",
-        client_code_challenge="chal", client_code_challenge_method="S256",
-        upstream_verifier=VERIFIER_SECRET,
-    ))
+    store.put_session(
+        AuthSession(
+            session_id="s1",
+            client_id="cid",
+            server_name="vendor",
+            client_redirect_uri="https://c.example/cb",
+            client_state="client-state",
+            client_code_challenge="chal",
+            client_code_challenge_method="S256",
+            upstream_verifier=VERIFIER_SECRET,
+        )
+    )
     s = store.take_session("s1")
     assert s is not None
     assert s.upstream_verifier == VERIFIER_SECRET
@@ -218,14 +255,23 @@ def test_issuing_a_token_updates_the_existing_grant(store):
 
 def test_abandoned_sessions_are_purged(store, monkeypatch):
     """A credential nothing can use is liability, not state."""
-    store.put_session(AuthSession(
-        session_id="stale", client_id="c", server_name="v",
-        client_redirect_uri="https://c.example/cb", client_state=None,
-        client_code_challenge=None, client_code_challenge_method="S256",
-        upstream_verifier="v", created_at=0.0,
-    ))
+    store.put_session(
+        AuthSession(
+            session_id="stale",
+            client_id="c",
+            server_name="v",
+            client_redirect_uri="https://c.example/cb",
+            client_state=None,
+            client_code_challenge=None,
+            client_code_challenge_method="S256",
+            upstream_verifier="v",
+            created_at=0.0,
+        )
+    )
     assert store.counts["sessions"] == 1
 
-    store._last_purge = 0.0          # allow the next call to purge
-    store.put_client(RegisteredClient(client_id="x", redirect_uris=("https://c.example/cb",)))
+    store._last_purge = 0.0  # allow the next call to purge
+    store.put_client(
+        RegisteredClient(client_id="x", redirect_uris=("https://c.example/cb",))
+    )
     assert store.counts["sessions"] == 0

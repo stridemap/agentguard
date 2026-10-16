@@ -25,14 +25,20 @@ def declared() -> list[str]:
     return [d.lower() for d in data["project"]["dependencies"]]
 
 
-@pytest.mark.parametrize(("package", "why"), [
-    ("python-multipart", "FastAPI Form() — the OAuth token and revocation endpoints"),
-    ("fastapi", "the HTTP gateway"),
-    ("httpx", "the upstream client"),
-    ("uvicorn", "serving the gateway"),
-    ("pydantic", "config and event models"),
-    ("pyyaml", "config, policy and registry files"),
-])
+@pytest.mark.parametrize(
+    ("package", "why"),
+    [
+        (
+            "python-multipart",
+            "FastAPI Form() — the OAuth token and revocation endpoints",
+        ),
+        ("fastapi", "the HTTP gateway"),
+        ("httpx", "the upstream client"),
+        ("uvicorn", "serving the gateway"),
+        ("pydantic", "config and event models"),
+        ("pyyaml", "config, policy and registry files"),
+    ],
+)
 def test_runtime_dependency_is_declared(declared, package, why):
     assert any(d.startswith(package) for d in declared), (
         f"{package} is required for {why} but is not declared in pyproject.toml. "
@@ -43,6 +49,6 @@ def test_runtime_dependency_is_declared(declared, package, why):
 def test_the_oauth_endpoints_really_do_need_multipart():
     """Guards the reason: if Form() is ever dropped, this test should be revisited."""
     source = (PYPROJECT.parent / "minigate" / "bridge.py").read_text(encoding="utf-8")
-    assert "Form(" in source, (
-        "bridge.py no longer uses Form(); the python-multipart requirement may be stale"
-    )
+    assert (
+        "Form(" in source
+    ), "bridge.py no longer uses Form(); the python-multipart requirement may be stale"

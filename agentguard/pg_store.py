@@ -64,7 +64,9 @@ ON CONFLICT (event_id) DO NOTHING
 """
 
 
-_CHAIN_LOCK_KEY = 0x41475F4348414E  # "AG_CHAN" — advisory lock namespace for the audit chain
+_CHAIN_LOCK_KEY = (
+    0x41475F4348414E  # "AG_CHAN" — advisory lock namespace for the audit chain
+)
 
 
 class PostgresEventStore:

@@ -44,14 +44,23 @@ class RecordingSink:
         self.events.append(event)
 
 
-def _core(tmp_path, policy_yaml=ALLOW_YAML, *, sink=None, elicitation=None, lineage=None, mode="off"):
+def _core(
+    tmp_path,
+    policy_yaml=ALLOW_YAML,
+    *,
+    sink=None,
+    elicitation=None,
+    lineage=None,
+    mode="off",
+):
     path = tmp_path / "policy.yaml"
     path.write_text(policy_yaml, encoding="utf-8")
     return GatewayCore(
         server="helper",
         policy=PolicyEngine(str(path)),
         guardrails=Guardrails(
-            DLPSettings(enabled=False), InjectionSettings(enabled=True, sensitivity="LOW")
+            DLPSettings(enabled=False),
+            InjectionSettings(enabled=True, sensitivity="LOW"),
         ),
         sink=sink or RecordingSink(),
         elicitation_settings=elicitation or ElicitationSettings(),
@@ -61,7 +70,9 @@ def _core(tmp_path, policy_yaml=ALLOW_YAML, *, sink=None, elicitation=None, line
     )
 
 
-def _elicit(message: str = "Which repository?", properties: dict | None = None, rpc_id=1) -> dict:
+def _elicit(
+    message: str = "Which repository?", properties: dict | None = None, rpc_id=1
+) -> dict:
     return {
         "jsonrpc": "2.0",
         "id": rpc_id,
@@ -70,13 +81,16 @@ def _elicit(message: str = "Which repository?", properties: dict | None = None, 
             "message": message,
             "requestedSchema": {
                 "type": "object",
-                "properties": properties or {"repo": {"type": "string", "title": "Repository"}},
+                "properties": properties
+                or {"repo": {"type": "string", "title": "Repository"}},
             },
         },
     }
 
 
-def _answer(content: dict | None = None, action: str = "accept", rpc_id: int = 1) -> dict:
+def _answer(
+    content: dict | None = None, action: str = "accept", rpc_id: int = 1
+) -> dict:
     result: dict = {"action": action}
     if content is not None:
         result["content"] = content
@@ -111,7 +125,17 @@ def test_rejections_are_audited(tmp_path):
 
 @pytest.mark.parametrize(
     "field",
-    ["password", "api_key", "apiKey", "access_token", "ssn", "credit_card", "cvv", "otp", "pin"],
+    [
+        "password",
+        "api_key",
+        "apiKey",
+        "access_token",
+        "ssn",
+        "credit_card",
+        "cvv",
+        "otp",
+        "pin",
+    ],
 )
 def test_a_form_asking_for_secrets_is_refused(tmp_path, field):
     """The spec says servers MUST NOT request sensitive information — this enforces it."""
@@ -134,7 +158,10 @@ def test_a_neutral_field_name_with_a_revealing_title_is_refused(tmp_path):
 
 def test_a_revealing_description_is_refused(tmp_path):
     rejection = _core(tmp_path).on_server_request(
-        _elicit("Setup", {"v": {"type": "string", "description": "Paste your password here"}})
+        _elicit(
+            "Setup",
+            {"v": {"type": "string", "description": "Paste your password here"}},
+        )
     )
 
     assert rejection is not None
@@ -152,23 +179,40 @@ def test_the_message_itself_is_checked(tmp_path):
 def test_ordinary_fields_are_not_flagged(tmp_path):
     request = _elicit(
         "Pick a branch",
-        {"branch": {"type": "string"}, "confirm": {"type": "boolean", "title": "Are you sure?"}},
+        {
+            "branch": {"type": "string"},
+            "confirm": {"type": "boolean", "title": "Are you sure?"},
+        },
     )
 
     assert _core(tmp_path).on_server_request(request) is None
 
 
 def test_the_sensitive_field_list_is_configurable(tmp_path):
-    core = _core(tmp_path, elicitation=ElicitationSettings(sensitive_fields=[r"employee[-_ ]?id"]))
+    core = _core(
+        tmp_path,
+        elicitation=ElicitationSettings(sensitive_fields=[r"employee[-_ ]?id"]),
+    )
 
-    assert core.on_server_request(_elicit("Setup", {"employee_id": {"type": "string"}})) is not None
-    assert core.on_server_request(_elicit("Setup", {"password": {"type": "string"}})) is None
+    assert (
+        core.on_server_request(_elicit("Setup", {"employee_id": {"type": "string"}}))
+        is not None
+    )
+    assert (
+        core.on_server_request(_elicit("Setup", {"password": {"type": "string"}}))
+        is None
+    )
 
 
 def test_an_invalid_pattern_is_skipped_not_fatal(tmp_path):
-    core = _core(tmp_path, elicitation=ElicitationSettings(sensitive_fields=["[unclosed", "ssn"]))
+    core = _core(
+        tmp_path, elicitation=ElicitationSettings(sensitive_fields=["[unclosed", "ssn"])
+    )
 
-    assert core.on_server_request(_elicit("Setup", {"ssn": {"type": "string"}})) is not None
+    assert (
+        core.on_server_request(_elicit("Setup", {"ssn": {"type": "string"}}))
+        is not None
+    )
     assert core.on_server_request(_elicit()) is None
 
 
@@ -268,7 +312,9 @@ def test_response_scanning_can_be_disabled(tmp_path):
 
 def test_answers_are_audited(tmp_path):
     sink = RecordingSink()
-    _core(tmp_path, sink=sink).on_client_response(_answer({"repo": "sentinel"}), "elicitation/create")
+    _core(tmp_path, sink=sink).on_client_response(
+        _answer({"repo": "sentinel"}), "elicitation/create"
+    )
 
     event = sink.events[-1]
     assert event.method == "elicitation/create"
@@ -313,7 +359,9 @@ def test_the_users_answer_is_routed_back_upstream(tmp_path):
     proxy.run()
 
     proxy.server_out = _Stream("")
-    proxy.client_in = _Stream(json.dumps(_answer({"repo": "sentinel"}, rpc_id=77)) + "\n")
+    proxy.client_in = _Stream(
+        json.dumps(_answer({"repo": "sentinel"}, rpc_id=77)) + "\n"
+    )
     proxy.server_in = _Stream()
     proxy.run()
 
@@ -339,8 +387,13 @@ def test_shipped_defaults_refuse_a_credential_form(tmp_path):
     core = GatewayCore(
         server="helper",
         policy=PolicyEngine("policies/minigate.yaml"),
-        guardrails=Guardrails(DLPSettings(enabled=False), InjectionSettings(enabled=False)),
+        guardrails=Guardrails(
+            DLPSettings(enabled=False), InjectionSettings(enabled=False)
+        ),
     )
 
     assert core.on_server_request(_elicit()) is None
-    assert core.on_server_request(_elicit("Verify", {"password": {"type": "string"}})) is not None
+    assert (
+        core.on_server_request(_elicit("Verify", {"password": {"type": "string"}}))
+        is not None
+    )

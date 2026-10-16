@@ -99,9 +99,11 @@ class EventStore:
         cryptographic chain at that row. Resuming makes the chain durable
         across process restarts.
         """
-        row = self._get_conn().execute(
-            "SELECT event_hash FROM events ORDER BY rowid DESC LIMIT 1"
-        ).fetchone()
+        row = (
+            self._get_conn()
+            .execute("SELECT event_hash FROM events ORDER BY rowid DESC LIMIT 1")
+            .fetchone()
+        )
         if row is not None:
             self._last_hash = row[0]
 
@@ -111,7 +113,9 @@ class EventStore:
             # isolation_level=None puts the driver in autocommit mode so append() can
             # open its own BEGIN IMMEDIATE transaction explicitly. busy_timeout makes a
             # competing writer wait for the lock instead of raising "database is locked".
-            self._local.conn = sqlite3.connect(self.db_path, isolation_level=None, timeout=10.0)
+            self._local.conn = sqlite3.connect(
+                self.db_path, isolation_level=None, timeout=10.0
+            )
             # busy_timeout must come first. It governs every statement after it, and the
             # very next one — switching to WAL — takes a brief exclusive lock. Set the
             # other way round, two stores opening the same file at once raced and one

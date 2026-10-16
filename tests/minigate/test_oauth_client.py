@@ -102,12 +102,17 @@ async def test_discovery_builds_the_rfc9728_path_from_the_resource_path():
             return httpx.Response(200, json=PRM)
         return httpx.Response(200, json=AS_METADATA)
 
-    await discover(UPSTREAM_RESOURCE, client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    await discover(
+        UPSTREAM_RESOURCE,
+        client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
     assert "/.well-known/oauth-protected-resource/mcp" in seen
 
 
 async def test_discovery_without_an_authorization_server_is_an_error():
-    client = httpx.AsyncClient(transport=_discovery_transport(prm={"resource": UPSTREAM_RESOURCE}))
+    client = httpx.AsyncClient(
+        transport=_discovery_transport(prm={"resource": UPSTREAM_RESOURCE})
+    )
     with pytest.raises(OAuthError, match="no authorization_servers"):
         await discover(UPSTREAM_RESOURCE, client=client)
 
@@ -132,7 +137,9 @@ async def test_registration_sends_a_usable_native_client_record():
         return httpx.Response(201, json={"client_id": "cid-123"})
 
     flow = UpstreamOAuth(
-        AS_METADATA, UPSTREAM_RESOURCE, REDIRECT,
+        AS_METADATA,
+        UPSTREAM_RESOURCE,
+        REDIRECT,
         client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
     )
     registration = await flow.register()
@@ -152,7 +159,9 @@ async def test_registration_keeps_a_secret_when_one_is_issued():
         return httpx.Response(201, json={"client_id": "cid", "client_secret": "shh"})
 
     flow = UpstreamOAuth(
-        AS_METADATA, UPSTREAM_RESOURCE, REDIRECT,
+        AS_METADATA,
+        UPSTREAM_RESOURCE,
+        REDIRECT,
         client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
     )
     assert (await flow.register()).is_confidential is True
@@ -163,7 +172,9 @@ async def test_registration_failure_reports_the_status():
         return httpx.Response(400, text="invalid_redirect_uri")
 
     flow = UpstreamOAuth(
-        AS_METADATA, UPSTREAM_RESOURCE, REDIRECT,
+        AS_METADATA,
+        UPSTREAM_RESOURCE,
+        REDIRECT,
         client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
     )
     with pytest.raises(OAuthError, match="invalid_redirect_uri"):
@@ -171,7 +182,9 @@ async def test_registration_failure_reports_the_status():
 
 
 async def test_registration_requires_an_endpoint():
-    flow = UpstreamOAuth({**AS_METADATA, "registration_endpoint": None}, UPSTREAM_RESOURCE, REDIRECT)
+    flow = UpstreamOAuth(
+        {**AS_METADATA, "registration_endpoint": None}, UPSTREAM_RESOURCE, REDIRECT
+    )
     with pytest.raises(OAuthError, match="no registration_endpoint"):
         await flow.register()
     await flow.aclose()
@@ -189,7 +202,9 @@ async def test_authorize_url_requests_the_upstreams_own_resource():
     upstream actually owns.
     """
     flow = UpstreamOAuth(AS_METADATA, UPSTREAM_RESOURCE, REDIRECT)
-    params = parse_qs(urlparse(flow.authorize_url(REGISTRATION, PkcePair.generate(), "st")).query)
+    params = parse_qs(
+        urlparse(flow.authorize_url(REGISTRATION, PkcePair.generate(), "st")).query
+    )
     assert params["resource"] == [UPSTREAM_RESOURCE]
     await flow.aclose()
 
@@ -197,7 +212,9 @@ async def test_authorize_url_requests_the_upstreams_own_resource():
 async def test_authorize_url_carries_pkce_and_state():
     flow = UpstreamOAuth(AS_METADATA, UPSTREAM_RESOURCE, REDIRECT)
     pkce = PkcePair.generate()
-    params = parse_qs(urlparse(flow.authorize_url(REGISTRATION, pkce, "state-xyz")).query)
+    params = parse_qs(
+        urlparse(flow.authorize_url(REGISTRATION, pkce, "state-xyz")).query
+    )
 
     assert params["response_type"] == ["code"]
     assert params["client_id"] == ["cid-123"]
@@ -213,7 +230,9 @@ async def test_authorize_url_carries_pkce_and_state():
 async def test_identity_scopes_are_requested_when_the_server_offers_them():
     """Without an id_token the audit trail cannot name the human who consented."""
     flow = UpstreamOAuth(AS_METADATA, UPSTREAM_RESOURCE, REDIRECT)
-    params = parse_qs(urlparse(flow.authorize_url(REGISTRATION, PkcePair.generate(), "s")).query)
+    params = parse_qs(
+        urlparse(flow.authorize_url(REGISTRATION, PkcePair.generate(), "s")).query
+    )
     granted = params["scope"][0].split()
     assert "read" in granted and "write" in granted
     assert "openid" in granted and "email" in granted
@@ -224,7 +243,9 @@ async def test_only_scopes_the_server_offers_are_requested():
     """Asking for a scope the server does not advertise is how a consent screen errors."""
     meta = {**AS_METADATA, "scopes_supported": ["read"]}
     flow = UpstreamOAuth(meta, UPSTREAM_RESOURCE, REDIRECT)
-    params = parse_qs(urlparse(flow.authorize_url(REGISTRATION, PkcePair.generate(), "s")).query)
+    params = parse_qs(
+        urlparse(flow.authorize_url(REGISTRATION, PkcePair.generate(), "s")).query
+    )
     assert params["scope"] == ["read"]
     await flow.aclose()
 
@@ -234,9 +255,13 @@ async def test_only_scopes_the_server_offers_are_requested():
 
 def _token_transport(captured: dict, payload: dict, status: int = 200):
     def handler(request: httpx.Request) -> httpx.Response:
-        captured.update({k: v[0] for k, v in parse_qs(request.content.decode()).items()})
-        return httpx.Response(status, json=payload) if status == 200 else httpx.Response(
-            status, text=json.dumps(payload)
+        captured.update(
+            {k: v[0] for k, v in parse_qs(request.content.decode()).items()}
+        )
+        return (
+            httpx.Response(status, json=payload)
+            if status == 200
+            else httpx.Response(status, text=json.dumps(payload))
         )
 
     return httpx.MockTransport(handler)
@@ -245,8 +270,12 @@ def _token_transport(captured: dict, payload: dict, status: int = 200):
 async def test_exchange_sends_the_verifier_and_the_resource():
     captured: dict = {}
     flow = UpstreamOAuth(
-        AS_METADATA, UPSTREAM_RESOURCE, REDIRECT,
-        client=httpx.AsyncClient(transport=_token_transport(captured, {"access_token": "tok"})),
+        AS_METADATA,
+        UPSTREAM_RESOURCE,
+        REDIRECT,
+        client=httpx.AsyncClient(
+            transport=_token_transport(captured, {"access_token": "tok"})
+        ),
     )
     pkce = PkcePair.generate()
     tokens = await flow.exchange(REGISTRATION, "the-code", pkce)
@@ -261,11 +290,21 @@ async def test_exchange_sends_the_verifier_and_the_resource():
 
 async def test_exchange_parses_the_full_token_set():
     flow = UpstreamOAuth(
-        AS_METADATA, UPSTREAM_RESOURCE, REDIRECT,
-        client=httpx.AsyncClient(transport=_token_transport({}, {
-            "access_token": "tok", "token_type": "Bearer",
-            "refresh_token": "ref", "expires_in": 3600, "scope": "read write",
-        })),
+        AS_METADATA,
+        UPSTREAM_RESOURCE,
+        REDIRECT,
+        client=httpx.AsyncClient(
+            transport=_token_transport(
+                {},
+                {
+                    "access_token": "tok",
+                    "token_type": "Bearer",
+                    "refresh_token": "ref",
+                    "expires_in": 3600,
+                    "scope": "read write",
+                },
+            )
+        ),
     )
     tokens = await flow.exchange(REGISTRATION, "c", PkcePair.generate())
     assert tokens.refresh_token == "ref"
@@ -276,8 +315,12 @@ async def test_exchange_parses_the_full_token_set():
 async def test_refresh_uses_the_refresh_grant_and_keeps_the_resource():
     captured: dict = {}
     flow = UpstreamOAuth(
-        AS_METADATA, UPSTREAM_RESOURCE, REDIRECT,
-        client=httpx.AsyncClient(transport=_token_transport(captured, {"access_token": "new"})),
+        AS_METADATA,
+        UPSTREAM_RESOURCE,
+        REDIRECT,
+        client=httpx.AsyncClient(
+            transport=_token_transport(captured, {"access_token": "new"})
+        ),
     )
     assert (await flow.refresh(REGISTRATION, "ref-1")).access_token == "new"
     assert captured["grant_type"] == "refresh_token"
@@ -288,17 +331,29 @@ async def test_refresh_uses_the_refresh_grant_and_keeps_the_resource():
 async def test_a_confidential_client_sends_its_secret():
     captured: dict = {}
     flow = UpstreamOAuth(
-        AS_METADATA, UPSTREAM_RESOURCE, REDIRECT,
-        client=httpx.AsyncClient(transport=_token_transport(captured, {"access_token": "t"})),
+        AS_METADATA,
+        UPSTREAM_RESOURCE,
+        REDIRECT,
+        client=httpx.AsyncClient(
+            transport=_token_transport(captured, {"access_token": "t"})
+        ),
     )
-    await flow.exchange(ClientRegistration(client_id="c", client_secret="shh"), "code", PkcePair.generate())
+    await flow.exchange(
+        ClientRegistration(client_id="c", client_secret="shh"),
+        "code",
+        PkcePair.generate(),
+    )
     assert captured["client_secret"] == "shh"
 
 
 async def test_a_token_response_without_a_token_is_an_error():
     flow = UpstreamOAuth(
-        AS_METADATA, UPSTREAM_RESOURCE, REDIRECT,
-        client=httpx.AsyncClient(transport=_token_transport({}, {"token_type": "Bearer"})),
+        AS_METADATA,
+        UPSTREAM_RESOURCE,
+        REDIRECT,
+        client=httpx.AsyncClient(
+            transport=_token_transport({}, {"token_type": "Bearer"})
+        ),
     )
     with pytest.raises(OAuthError, match="no access_token"):
         await flow.exchange(REGISTRATION, "c", PkcePair.generate())
@@ -306,7 +361,9 @@ async def test_a_token_response_without_a_token_is_an_error():
 
 async def test_a_rejected_exchange_surfaces_the_oauth_error_code():
     flow = UpstreamOAuth(
-        AS_METADATA, UPSTREAM_RESOURCE, REDIRECT,
+        AS_METADATA,
+        UPSTREAM_RESOURCE,
+        REDIRECT,
         client=httpx.AsyncClient(
             transport=_token_transport({}, {"error": "invalid_grant"}, status=400)
         ),
@@ -354,18 +411,32 @@ async def test_an_unexpected_token_type_is_preserved_not_normalised():
 async def test_a_missing_token_type_defaults_to_bearer():
     captured: dict = {}
     flow = UpstreamOAuth(
-        AS_METADATA, UPSTREAM_RESOURCE, REDIRECT,
-        client=httpx.AsyncClient(transport=_token_transport(captured, {"access_token": "t"})),
+        AS_METADATA,
+        UPSTREAM_RESOURCE,
+        REDIRECT,
+        client=httpx.AsyncClient(
+            transport=_token_transport(captured, {"access_token": "t"})
+        ),
     )
-    assert (await flow.exchange(REGISTRATION, "c", PkcePair.generate())).token_type == "Bearer"
+    assert (
+        await flow.exchange(REGISTRATION, "c", PkcePair.generate())
+    ).token_type == "Bearer"
 
 
 async def test_unrecognised_response_fields_are_recorded_by_name_only():
     flow = UpstreamOAuth(
-        AS_METADATA, UPSTREAM_RESOURCE, REDIRECT,
-        client=httpx.AsyncClient(transport=_token_transport({}, {
-            "access_token": "t", "workspace": "acme",
-        })),
+        AS_METADATA,
+        UPSTREAM_RESOURCE,
+        REDIRECT,
+        client=httpx.AsyncClient(
+            transport=_token_transport(
+                {},
+                {
+                    "access_token": "t",
+                    "workspace": "acme",
+                },
+            )
+        ),
     )
     tokens = await flow.exchange(REGISTRATION, "c", PkcePair.generate())
     # id_token is consumed for identity, so only genuinely unknown keys are listed.
@@ -389,7 +460,10 @@ async def test_a_lowercase_bearer_token_type_is_canonicalised_on_the_wire():
 
 async def test_any_casing_of_bearer_is_canonicalised():
     for given in ("bearer", "Bearer", "BEARER", "BeArEr"):
-        assert TokenSet(access_token="t", token_type=given).authorization_header == "Bearer t"
+        assert (
+            TokenSet(access_token="t", token_type=given).authorization_header
+            == "Bearer t"
+        )
 
 
 async def test_the_observed_token_type_is_still_reported_verbatim():
@@ -407,10 +481,18 @@ async def test_a_non_bearer_scheme_is_passed_through_untouched():
 
 async def test_an_exchanged_lowercase_token_reaches_the_wire_capitalised():
     flow = UpstreamOAuth(
-        AS_METADATA, UPSTREAM_RESOURCE, REDIRECT,
-        client=httpx.AsyncClient(transport=_token_transport({}, {
-            "access_token": "abc", "token_type": "bearer",
-        })),
+        AS_METADATA,
+        UPSTREAM_RESOURCE,
+        REDIRECT,
+        client=httpx.AsyncClient(
+            transport=_token_transport(
+                {},
+                {
+                    "access_token": "abc",
+                    "token_type": "bearer",
+                },
+            )
+        ),
     )
     tokens = await flow.exchange(REGISTRATION, "code", PkcePair.generate())
     assert tokens.authorization_header.startswith("Bearer ")
@@ -432,14 +514,22 @@ def _id_token(claims: dict) -> str:
 
 
 async def test_identity_claims_are_read_from_the_id_token():
-    tokens = TokenSet(access_token="t", id_token=_id_token({
-        "sub": "user_123", "email": "alice@acme.com", "name": "Alice", "iat": 1,
-    }))
+    tokens = TokenSet(
+        access_token="t",
+        id_token=_id_token(
+            {
+                "sub": "user_123",
+                "email": "alice@acme.com",
+                "name": "Alice",
+                "iat": 1,
+            }
+        ),
+    )
     identity = tokens.identity()
     assert identity["sub"] == "user_123"
     assert identity["email"] == "alice@acme.com"
     assert identity["name"] == "Alice"
-    assert "iat" not in identity          # only the claims we attribute by
+    assert "iat" not in identity  # only the claims we attribute by
 
 
 async def test_no_id_token_means_no_identity():
@@ -453,5 +543,7 @@ async def test_a_malformed_id_token_yields_no_identity_rather_than_raising(bad):
 
 
 async def test_the_id_token_itself_is_never_printed():
-    tokens = TokenSet(access_token="t", id_token=_id_token({"sub": "s", "email": "e@x.com"}))
+    tokens = TokenSet(
+        access_token="t", id_token=_id_token({"sub": "s", "email": "e@x.com"})
+    )
     assert tokens.id_token not in tokens.describe()

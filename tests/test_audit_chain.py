@@ -333,7 +333,9 @@ def test_chain_survives_concurrent_stores_sharing_one_database(tmp_path):
 
     # and every link genuinely points at the row before it
     conn = verifying_store._get_conn()
-    rows = conn.execute("SELECT prev_hash, event_hash FROM events ORDER BY rowid").fetchall()
+    rows = conn.execute(
+        "SELECT prev_hash, event_hash FROM events ORDER BY rowid"
+    ).fetchall()
     for previous, current in zip(rows, rows[1:], strict=False):
         assert current[0] == previous[1]
     verifying_store.close()
@@ -353,9 +355,11 @@ def test_a_second_store_resumes_the_chain_rather_than_restarting_it(tmp_path):
     second.append(AgentEvent(tool_name="b", run_id=uuid4()))
 
     assert second.verify_chain()["is_valid"] is True
-    rows = second._get_conn().execute(
-        "SELECT prev_hash, event_hash FROM events ORDER BY rowid"
-    ).fetchall()
+    rows = (
+        second._get_conn()
+        .execute("SELECT prev_hash, event_hash FROM events ORDER BY rowid")
+        .fetchall()
+    )
     assert rows[1][0] == rows[0][1]
     second.close()
 
@@ -385,5 +389,7 @@ def test_latency_survives_the_hash_round_trip_exactly():
     assert "latency_ms DOUBLE PRECISION," in schema
     assert "latency_ms REAL," not in schema
 
-    sqlite_schema = (Path(__file__).parent.parent / "agentguard" / "event_store.py").read_text()
+    sqlite_schema = (
+        Path(__file__).parent.parent / "agentguard" / "event_store.py"
+    ).read_text()
     assert "latency_ms REAL," in sqlite_schema, "SQLite REAL is an 8-byte double — fine"

@@ -39,25 +39,37 @@ def test_a_mistyped_policy_key_is_rejected(tmp_path):
 def test_a_mistyped_registry_key_is_rejected(tmp_path):
     """Silently defaulting here turns definition pinning off."""
     with pytest.raises(ConfigError, match="registryy"):
-        load_config(_write(tmp_path, BASE + "registryy: {path: r.yaml, mode: enforce}\n"))
+        load_config(
+            _write(tmp_path, BASE + "registryy: {path: r.yaml, mode: enforce}\n")
+        )
 
 
 def test_an_unknown_key_in_a_nested_section_is_rejected(tmp_path):
     with pytest.raises(ConfigError, match="requiree"):
-        load_config(_write(tmp_path, """
+        load_config(
+            _write(
+                tmp_path,
+                """
 http:
   public_url: "http://x"
   auth: {mode: bridge, requiree: true}
 servers: {linear: {url: "https://mcp.linear.app/mcp"}}
-"""))
+""",
+            )
+        )
 
 
 def test_an_unknown_key_on_a_server_is_rejected(tmp_path):
     with pytest.raises(ConfigError, match="urll"):
-        load_config(_write(tmp_path, """
+        load_config(
+            _write(
+                tmp_path,
+                """
 http: {public_url: "http://x"}
 servers: {linear: {urll: "https://mcp.linear.app/mcp"}}
-"""))
+""",
+            )
+        )
 
 
 def test_a_correct_config_still_loads(tmp_path):

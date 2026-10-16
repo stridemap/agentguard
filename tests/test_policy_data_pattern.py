@@ -40,8 +40,14 @@ def engine(tmp_path):
 
 
 def _event(**over) -> AgentEvent:
-    base = {"agent_id": "a", "session_id": "s", "tool_name": "linear.save_issue",
-            "run_id": uuid4(), "input_str": "", "output_str": ""}
+    base = {
+        "agent_id": "a",
+        "session_id": "s",
+        "tool_name": "linear.save_issue",
+        "run_id": uuid4(),
+        "input_str": "",
+        "output_str": "",
+    }
     return AgentEvent(**{**base, **over})
 
 
@@ -49,7 +55,7 @@ def test_a_redacted_payload_still_blocks(engine):
     """The case that mattered: redaction had silently disabled the rule."""
 
     event = _event(
-        input_str='{"description": "Employee SSN is [US_SSN]"}',   # value already gone
+        input_str='{"description": "Employee SSN is [US_SSN]"}',  # value already gone
         dlp_entities=["US_SSN"],
         risk_flags=[RiskFlag.PII_DETECTED],
     )
