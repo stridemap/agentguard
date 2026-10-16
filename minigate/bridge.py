@@ -342,7 +342,15 @@ def bridge_router(bridge: OAuthBridge) -> APIRouter:
     """The authorization-server endpoints MiniGate exposes to its clients."""
     api = APIRouter()
 
+    # RFC 8414 locates this at the issuer root, which is where our issuer has no path.
+    # The suffixed and OIDC variants are served too: clients differ in whether they
+    # derive the metadata URL from the issuer or from the resource path, and MCP's later
+    # revisions permit OIDC Discovery as an alternative. Answering all of them costs
+    # nothing and removes a class of failure that surfaces only as "could not register".
     @api.get("/.well-known/oauth-authorization-server")
+    @api.get("/.well-known/oauth-authorization-server/{suffix:path}")
+    @api.get("/.well-known/openid-configuration")
+    @api.get("/.well-known/openid-configuration/{suffix:path}")
     async def authorization_server_metadata(request: Request) -> Response:
         """RFC 8414 metadata. We are the authorization server now, not the upstream."""
         base = bridge.base_url(request)
@@ -355,9 +363,13 @@ def bridge_router(bridge: OAuthBridge) -> APIRouter:
                 "revocation_endpoint": f"{base}/oauth/revoke",
                 "scopes_supported": ["read", "write"],
                 "response_types_supported": ["code"],
-                "grant_types_supported": ["authorization_code"],
+                "response_modes_supported": ["query"],
+                "grant_types_supported": ["authorization_code", "refresh_token"],
                 "code_challenge_methods_supported": ["S256"],
                 "token_endpoint_auth_methods_supported": ["none"],
+                # RFC 9207: the issuer is echoed on the authorization response, which a
+                # client may validate before redeeming the code.
+                "authorization_response_iss_parameter_supported": False,
             }
         )
 

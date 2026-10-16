@@ -1052,3 +1052,52 @@ def test_a_token_for_one_server_does_not_work_against_the_other(two_vendors):
         "a token issued for alpha must not authorize beta — otherwise alpha's upstream "
         "credential is forwarded to an endpoint it was never issued for"
     )
+
+
+# ── discovery variants ───────────────────────────────────────────────
+#
+# Clients differ in how they derive the authorization-server metadata URL: some from the
+# issuer, some from the resource path, and MCP's later revisions permit OIDC Discovery.
+# A client that cannot find this document reports only that it could not register, which
+# points at the wrong endpoint entirely.
+
+
+@pytest.mark.parametrize("path", [
+    "/.well-known/oauth-authorization-server",
+    "/.well-known/oauth-authorization-server/mcp/vendor",
+    "/.well-known/openid-configuration",
+    "/.well-known/openid-configuration/mcp/vendor",
+])
+def test_authorization_server_metadata_is_found_at_every_variant(client, path):
+    r = client.get(path)
+    assert r.status_code == 200, f"{path} must serve AS metadata"
+    assert r.json()["issuer"] == GATEWAY
+    assert r.json()["registration_endpoint"] == f"{GATEWAY}/oauth/register"
+
+
+def test_the_metadata_advertises_what_the_endpoints_actually_support(client):
+    """A client that trusts this document and then fails is the worst outcome."""
+    meta = client.get("/.well-known/oauth-authorization-server").json()
+    assert "refresh_token" in meta["grant_types_supported"]   # /oauth/token honours it
+    assert meta["code_challenge_methods_supported"] == ["S256"]
+    assert meta["token_endpoint_auth_methods_supported"] == ["none"]
+    assert meta["revocation_endpoint"].endswith("/oauth/revoke")
+
+
+@pytest.mark.parametrize("redirect", [
+    "https://claude.ai/api/mcp/auth_callback",
+    "https://claude.com/api/mcp/auth_callback",
+])
+def test_a_claude_connector_can_register(client, redirect):
+    """The exact shape a connector sends, including fields we do not use."""
+    r = client.post("/oauth/register", json={
+        "client_name": "Claude",
+        "redirect_uris": [redirect],
+        "grant_types": ["authorization_code", "refresh_token"],
+        "response_types": ["code"],
+        "token_endpoint_auth_method": "none",
+        "application_type": "web",
+        "scope": "read write",
+    })
+    assert r.status_code == 201, r.text
+    assert r.json()["client_id"]
